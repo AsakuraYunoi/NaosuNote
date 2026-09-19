@@ -5,6 +5,7 @@ node_modules/
 dist/
 dist-portable/
 release-portable/
+release-macos/
 
 # Tauri & Rust build artifacts
 src-tauri/target/

@@ -8,7 +8,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "package:macos": "bash platforms/macos/scripts/package-app.sh",
+    "package:windows": "powershell platforms/windows/scripts/package-portable.ps1"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
