@@ -151,8 +151,9 @@ NaosuNote/
 │   │   └── scripts/                    # macOS 打包发布脚本
 │   │       └── package-app.sh
 │   └── windows/                        # Windows 专属资产
-│       └── scripts/                    # Windows 绿色免安装 Zip 自动化打包脚本
-│           └── package-portable.ps1
+│       └── scripts/                    # Windows x64 单文件应用与免安装包自动化打包脚本
+│           ├── package-portable.ps1    # PowerShell 流水线（支持任意架构宿主机跨架构编译 x64）
+│           └── package-portable.bat    # Windows 资源管理器一键双击打包批处理
 │
 ├── src/                                # 前端 Vue3 源码
 │   ├── main.ts                         # 应用挂载入口，全局主题初始化
@@ -375,17 +376,34 @@ cargo test --manifest-path src-tauri/Cargo.toml
 #### macOS 原生应用包打包
 
 ```bash
-# 使用 macOS 专用打包脚本一键打包
+# 方式 1：通过 pnpm 快捷指令执行
+pnpm run package:macos
+
+# 方式 2：直接执行 Shell 脚本
 ./platforms/macos/scripts/package-app.sh
-# 产物输出于：src-tauri/target/release/bundle/macos/NaosuNote.app (或 dmg)
+
+# 产物自动归集于根目录：release-macos/
+# - NaosuNote_0.1.0-beta_*.dmg （DMG 安装镜像）
+# - NaosuNote.app               （独立应用程序）
 ```
 
-#### Windows 绿色免安装版一键打包
+#### Windows x64 单文件应用与绿色免安装版打包
+
+无论宿主机是传统 Intel/AMD x64 还是新一代 ARM64（如高通骁龙 X Elite / Surface Pro 11），脚本均会自动配置并交叉编译标准 `x86_64-pc-windows-msvc` 目标，生成具备全生态兼容性的单文件可执行程序：
 
 ```powershell
-# 在 Windows 终端 (PowerShell) 中执行
+# 方式 1：通过 pnpm 快捷指令执行
+pnpm run package:windows
+
+# 方式 2：在 Windows 终端 (PowerShell) 中执行
 .\platforms\windows\scripts\package-portable.ps1
-# 产物输出于：release-portable/NaosuNote_Windows_x64_Portable.zip
+
+# 方式 3：在 Windows 文件资源管理器中直接双击运行
+platforms\windows\scripts\package-portable.bat
+
+# 产物自动归集于根目录：release-portable/
+# - NaosuNote_0.1.0-beta_x64.exe            （推荐：独立单文件 EXE，开箱双击即用）
+# - NaosuNote_0.1.0-beta_Windows_x64_Portable.zip （便携 Zip 压缩包，含使用说明与预置数据）
 ```
 
-*(解压即可直接双击运行，数据库保存在个人文档目录，后续下载新版直接替换 exe 升级，历史题库与镜像数据永不丢失。)*
+*(纯绿色单文件设计：数据库自动保存在用户的个人文档目录 `%USERPROFILE%\Documents\NaosuNoteData`，后续下载任何新版 exe 均无缝衔接历史题库，题库数据永不丢失。)*

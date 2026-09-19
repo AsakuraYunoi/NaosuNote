@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "package:macos": "bash platforms/macos/scripts/package-app.sh",
-    "package:windows": "powershell platforms/windows/scripts/package-portable.ps1"
+    "package:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File platforms/windows/scripts/package-portable.ps1"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
