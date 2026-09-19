@@ -382,7 +382,7 @@ pnpm run package:macos
 # 方式 2：直接执行 Shell 脚本
 ./platforms/macos/scripts/package-app.sh
 
-# 产物自动归集于根目录：release-macos/
+# 产物统一自动归集于根目录：release-portable/
 # - NaosuNote_0.1.0-beta_*.dmg （DMG 安装镜像）
 # - NaosuNote.app               （独立应用程序）
 ```

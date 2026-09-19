@@ -35,13 +35,18 @@ echo -e "\n${CYAN}>>> [3/4] 正在编译 Rust 后端并封装 macOS 镜像 (.dmg
 # 传入 "$@" 支持用户附加自定义参数，例如 --target universal-apple-darwin
 pnpm run tauri build --no-sign "$@"
 
-# 4. 汇总打包产物至 release-macos/
-echo -e "\n${CYAN}>>> [4/4] 正在归集发布产物...${NC}"
-OUTPUT_DIR="release-macos"
-rm -rf "$OUTPUT_DIR"
+# 4. 汇总打包产物至 release-portable/
+echo -e "\n${CYAN}>>> [4/4] 正在归集发布产物至 release-portable/...${NC}"
+OUTPUT_DIR="release-portable"
 mkdir -p "$OUTPUT_DIR"
 
+# 优先探测 target 子目录中的 bundle，兜底常规 release 目录
 BUNDLE_DIR="src-tauri/target/release/bundle"
+for candidate in src-tauri/target/*/release/bundle; do
+    if [ -d "$candidate" ]; then
+        BUNDLE_DIR="$candidate"
+    fi
+done
 
 # 拷贝 DMG 安装文件
 DMG_FOUND=false
@@ -49,10 +54,10 @@ DMG_NAME=""
 if [ -d "$BUNDLE_DIR/dmg" ]; then
     for dmg in "$BUNDLE_DIR/dmg"/*.dmg; do
         if [ -f "$dmg" ]; then
-            cp "$dmg" "$OUTPUT_DIR/"
+            cp -f "$dmg" "$OUTPUT_DIR/"
             DMG_NAME=$(basename "$dmg")
             DMG_SIZE=$(ls -lh "$dmg" | awk '{print $5}')
-            echo -e "${GREEN}✓ 已提取 DMG 安装包: $OUTPUT_DIR/$DMG_NAME ($DMG_SIZE)${NC}"
+            echo -e "${GREEN}✓ 已提取 DMG 安装镜像: $OUTPUT_DIR/$DMG_NAME ($DMG_SIZE)${NC}"
             DMG_FOUND=true
         fi
     done
@@ -64,8 +69,9 @@ APP_NAME=""
 if [ -d "$BUNDLE_DIR/macos" ]; then
     for app in "$BUNDLE_DIR/macos"/*.app; do
         if [ -d "$app" ]; then
-            cp -R "$app" "$OUTPUT_DIR/"
             APP_NAME=$(basename "$app")
+            rm -rf "$OUTPUT_DIR/$APP_NAME"
+            cp -R "$app" "$OUTPUT_DIR/"
             echo -e "${GREEN}✓ 已提取独立 APP 程序: $OUTPUT_DIR/$APP_NAME${NC}"
             APP_FOUND=true
         fi
@@ -75,9 +81,9 @@ fi
 echo -e "\n${GREEN}====================================================${NC}"
 echo -e "${GREEN}             🎉 macOS 应用打包成功！                ${NC}"
 echo -e "${GREEN}====================================================${NC}"
-echo -e "产物目录: ${CYAN}$PROJECT_ROOT/$OUTPUT_DIR${NC}"
+echo -e "统一产物目录: ${CYAN}$PROJECT_ROOT/$OUTPUT_DIR${NC}"
 if [ "$DMG_FOUND" = true ]; then
-    echo -e "分发镜像: ${YELLOW}$PROJECT_ROOT/$OUTPUT_DIR/$DMG_NAME${NC} (可直接发给用户双击安装)"
+    echo -e "分发镜像: ${YELLOW}$PROJECT_ROOT/$OUTPUT_DIR/$DMG_NAME${NC} (双击安装)"
 fi
 if [ "$APP_FOUND" = true ]; then
     echo -e "本地程序: ${YELLOW}$PROJECT_ROOT/$OUTPUT_DIR/$APP_NAME${NC} (可直接拖入 /Applications 运行)"
