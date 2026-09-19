@@ -1,0 +1,60 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Notebook {
+    pub id: String,
+    pub name: String,
+    pub subject: String,
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Problem {
+    pub uuid: String,
+    pub notebook_id: Option<String>,
+    pub subject: String,
+    #[serde(rename = "type")]
+    pub problem_type: String,
+    pub date: String,
+    pub summary: String,
+    pub raw_html: String,
+    pub stem_clean_text: String,
+    pub difficulty: i32,
+    pub importance: i32,
+    pub tags: Option<Vec<String>>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProblemInput {
+    pub uuid: Option<String>,
+    pub notebook_id: Option<String>,
+    pub subject: String,
+    #[serde(rename = "type")]
+    pub problem_type: String,
+    pub date: String,
+    pub summary: String,
+    pub raw_html: String,
+    pub stem_clean_text: String,
+    pub tags: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TagCount {
+    pub name: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DuplicateCheckResult {
+    pub is_duplicate: bool,
+    pub similarity: f64,
+    pub existing_problem: Option<Problem>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AppConfig {
+    pub data_directory: String,
+}

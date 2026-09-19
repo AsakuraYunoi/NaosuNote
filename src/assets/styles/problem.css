@@ -1,0 +1,329 @@
+/**
+ * NaosuNote 错题标准排版与打印样式系统 (Exam Standard Typesetting System)
+ */
+
+/* 题干外层 */
+.naosu-problem {
+  position: relative;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  color: var(--md-sys-color-on-surface, #1a1c1e);
+  line-height: 1.6;
+}
+
+.problem-body {
+  font-size: 14.5px;
+  line-height: 1.65;
+  word-break: break-word;
+  color: var(--md-sys-color-on-surface, #1a1c1e);
+}
+
+/* 引导词与小问 */
+.sub-prompt {
+  font-weight: 600;
+  margin: 8px 0 4px 0;
+  color: var(--md-sys-color-on-surface, #202124);
+}
+
+.sub-item {
+  margin-bottom: 8px;
+  text-indent: -1.2em;
+  padding-left: 1.2em;
+  line-height: 1.5;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* 填空横线 */
+.blank {
+  border-bottom: 1.3px solid currentColor;
+  display: inline-block;
+  vertical-align: baseline;
+  margin: 0 3px;
+  height: 0.85em;
+}
+.blank-sm { width: 45px; }
+.blank-md { width: 85px; }
+.blank-lg { width: 140px; }
+.blank-xl { width: 210px; }
+
+/* 深色模式下错题卡片适配 */
+[data-theme="dark"] .m3-problem-card .problem-body svg {
+  filter: invert(0.88) hue-rotate(180deg);
+}
+[data-theme="dark"] .m3-problem-card table {
+  border-top-color: #e2e2e6 !important;
+  border-bottom-color: #e2e2e6 !important;
+}
+[data-theme="dark"] .m3-problem-card thead tr {
+  border-bottom-color: #e2e2e6 !important;
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+[data-theme="dark"] .m3-problem-card th {
+  color: #e2e2e6 !important;
+}
+[data-theme="dark"] .m3-problem-card td {
+  border-bottom-color: #3a3d45 !important;
+  color: #c3c7cf !important;
+}
+
+
+/* 基础选项排布 */
+.options {
+  margin: 8px 0;
+  padding-left: 6px;
+}
+
+/* 选项智能分列网格 (Options Grid) */
+.options-grid.options-4-col {
+  display: grid !important;
+  grid-template-columns: repeat(4, 1fr) !important;
+  gap: 4px 12px !important;
+}
+
+.options-grid.options-2-col {
+  display: grid !important;
+  grid-template-columns: repeat(2, 1fr) !important;
+  gap: 4px 16px !important;
+}
+
+.options-grid.options-1-col {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 4px !important;
+}
+
+.options span {
+  display: inline-block;
+}
+
+/* 理科试卷标准三线表排版 */
+.problem-body table {
+  width: 96%;
+  max-width: 680px;
+  margin: 8px auto;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  line-height: 1.4;
+  border-top: 1.8px solid #000000;
+  border-bottom: 1.8px solid #000000;
+  text-align: center;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.problem-body thead tr {
+  border-bottom: 1.2px solid #000000;
+  background-color: rgba(0, 0, 0, 0.025);
+}
+
+.problem-body th {
+  padding: 5px 8px;
+  font-weight: 700;
+  color: #1a1c1e;
+}
+
+.problem-body td {
+  padding: 4px 8px;
+  border-bottom: 0.5px solid #e0e0e0;
+  color: #202124;
+}
+
+.problem-body tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* 一题多图横向排布容器 (同一题内多张图片并列排在同一行) */
+.exam-images-row {
+  display: flex !important;
+  flex-direction: row !important;
+  justify-content: center !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 16px !important;
+  margin: 8px auto !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  break-inside: avoid !important;
+  page-break-inside: avoid !important;
+}
+
+.exam-images-row .img {
+  margin: 0 !important;
+  flex: 0 1 auto !important;
+}
+
+.exam-images-row .img svg,
+.exam-images-row .img img {
+  max-width: 100% !important;
+  max-height: 150px !important;
+  width: auto !important;
+  height: auto !important;
+  display: inline-block !important;
+}
+
+/* 独立 SVG 矢量图居中与自适应约束 */
+.img {
+  text-align: center;
+  margin: 8px auto;
+  overflow-x: auto;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.img svg {
+  max-width: min(100%, 460px);
+  max-height: 180px;
+  width: auto;
+  height: auto;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* =========================================================
+ * 试卷画板与打印核心规范 (Exam Sheet & Print Engine)
+ * ========================================================= */
+
+/* 确保纸张无论在浅色还是深色模式下，背景永远为纯白，文字和公式永远为纯黑 */
+.paper-sheet,
+body.print-paper-body {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+.paper-sheet,
+.paper-sheet .problem-body,
+.paper-sheet .problem-render-body,
+.paper-sheet .sub-item,
+.paper-sheet p,
+body.print-paper-body,
+body.print-paper-body .problem-body,
+body.print-paper-body .sub-item,
+body.print-paper-body p {
+  line-height: var(--paper-line-height, 1.5) !important;
+}
+
+.paper-sheet,
+.paper-sheet * {
+  --md-sys-color-on-surface: #000000 !important;
+  --md-sys-color-on-surface-variant: #222222 !important;
+}
+
+.paper-sheet .naosu-problem,
+.paper-sheet .problem-body,
+.paper-sheet .problem-render-body,
+.paper-sheet .sub-prompt,
+.paper-sheet .sub-item,
+.paper-sheet .options,
+.paper-sheet .katex,
+.paper-sheet .katex-html,
+.paper-sheet table,
+.paper-sheet th,
+.paper-sheet td,
+.paper-sheet p,
+.paper-sheet span,
+.paper-sheet div {
+  color: #000000 !important;
+}
+
+.paper-sheet table {
+  border-top-color: #000000 !important;
+  border-bottom-color: #000000 !important;
+}
+
+.paper-sheet thead tr {
+  border-bottom-color: #000000 !important;
+  background-color: rgba(0, 0, 0, 0.03) !important;
+}
+
+.paper-sheet td {
+  border-bottom-color: #e0e0e0 !important;
+}
+
+.paper-sheet .problem-body svg,
+.paper-sheet svg {
+  filter: none !important; /* 严禁纸张上的 SVG 在深色模式下被反色 */
+}
+
+/* 题干字号控制：响应滑块注入的 --paper-font-size 变量 */
+.paper-sheet,
+.paper-sheet .problem-body,
+.paper-sheet .problem-render-body,
+.paper-sheet .sub-item,
+body.print-paper-body,
+body.print-paper-body .problem-body,
+body.print-paper-body .sub-item {
+  font-size: var(--paper-font-size, 10px) !important;
+}
+
+/* 题间距控制：响应注入的 --problem-margin-bottom 变量 */
+.paper-sheet .paper-problem-wrapper,
+body.print-paper-body .paper-problem-wrapper {
+  margin-bottom: var(--problem-margin-bottom, 26px) !important;
+}
+
+/* 小问行距控制：响应注入的 --sub-item-margin-bottom 变量 */
+.paper-sheet .sub-item,
+body.print-paper-body .sub-item {
+  margin-bottom: var(--sub-item-margin-bottom, 4px) !important;
+}
+
+/* 智能单页吸附模式 (Auto-Fit Single Page) */
+.paper-sheet.auto-fit-page .img svg,
+body.auto-fit-page .img svg {
+  transform: scale(0.92);
+  transform-origin: center;
+}
+.paper-sheet.auto-fit-page .problem-body,
+body.auto-fit-page .problem-body {
+  letter-spacing: -0.15px;
+}
+
+/* 打印与试卷画板核心样式 */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .paper-problem-wrapper,
+  .naosu-problem {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin-bottom: 16px !important;
+    padding-bottom: 12px !important;
+  }
+
+  .sub-item {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .exam-side-by-side {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+}
+
+/* KaTeX 数学公式与物理分式排版保护 */
+.katex, .katex * {
+  box-sizing: content-box !important;
+}
+.katex {
+  line-height: 1.2 !important;
+  text-indent: 0 !important;
+}
+.sub-item .katex, p .katex, div .katex {
+  font-size: 1.12em;
+}
+

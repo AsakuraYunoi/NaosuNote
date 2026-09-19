@@ -1,0 +1,133 @@
+/**
+ * Google Material Design 3 (M3) Design Tokens
+ * Harmonious Tonal Palettes, Surfaces & Elevations
+ */
+
+:root {
+  /* M3 Primary Palettes (Indigo/Sapphire Tech Tone) */
+  --md-sys-color-primary: #00639b;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: #cee5ff;
+  --md-sys-color-on-primary-container: #001d33;
+
+  /* M3 Secondary (Teal/Slate) */
+  --md-sys-color-secondary: #51606f;
+  --md-sys-color-on-secondary: #ffffff;
+  --md-sys-color-secondary-container: #d4e4f6;
+  --md-sys-color-on-secondary-container: #0e1d2a;
+
+  /* M3 Tertiary (Warm Violet / Coral) */
+  --md-sys-color-tertiary: #67587a;
+  --md-sys-color-on-tertiary: #ffffff;
+  --md-sys-color-tertiary-container: #eedcff;
+  --md-sys-color-on-tertiary-container: #221533;
+
+  /* M3 Error */
+  --md-sys-color-error: #ba1a1a;
+  --md-sys-color-on-error: #ffffff;
+  --md-sys-color-error-container: #ffdad6;
+  --md-sys-color-on-error-container: #410002;
+
+  /* M3 Background & Surfaces (Modern Container Tones) */
+  --md-sys-color-background: #f8f9fa;
+  --md-sys-color-on-background: #191c1e;
+
+  --md-sys-color-surface: #fdfcff;
+  --md-sys-color-surface-dim: #ded8e1;
+  --md-sys-color-surface-bright: #fef7ff;
+  --md-sys-color-surface-container-lowest: #ffffff;
+  --md-sys-color-surface-container-low: #f7f2fa;
+  --md-sys-color-surface-container: #f3edf7;
+  --md-sys-color-surface-container-high: #ece6f0;
+  --md-sys-color-surface-container-highest: #e6e0e9;
+
+  --md-sys-color-on-surface: #1d1b20;
+  --md-sys-color-on-surface-variant: #49454f;
+
+  /* Outlines & Borders */
+  --md-sys-color-outline: #79747e;
+  --md-sys-color-outline-variant: #cac4d0;
+
+  /* Subject Badge Tonal Accents */
+  --subject-math: #0b57d0;
+  --subject-math-bg: #e8f0fe;
+  --subject-physics: #9c27b0;
+  --subject-physics-bg: #f3e5f5;
+  --subject-chem: #00796b;
+  --subject-chem-bg: #e0f2f1;
+  --subject-bio: #2e7d32;
+  --subject-bio-bg: #e8f5e9;
+
+  /* M3 Corner Radii */
+  --md-shape-corner-xs: 4px;
+  --md-shape-corner-sm: 8px;
+  --md-shape-corner-md: 12px;
+  --md-shape-corner-lg: 16px;
+  --md-shape-corner-xl: 24px;
+  --md-shape-corner-xxl: 28px;
+  --md-shape-corner-full: 9999px;
+
+  /* M3 Shadows / Elevations */
+  --md-elevation-1: 0px 1px 3px 1px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.30);
+  --md-elevation-2: 0px 2px 6px 2px rgba(0, 0, 0, 0.15), 0px 1px 2px 0px rgba(0, 0, 0, 0.30);
+  --md-elevation-3: 0px 4px 8px 3px rgba(0, 0, 0, 0.15), 0px 1px 3px 0px rgba(0, 0, 0, 0.30);
+}
+
+/* =========================================================
+ * M3 官方深色主题 (Dark Theme Tonal Palettes)
+ * ========================================================= */
+[data-theme="dark"] {
+  /* M3 Primary Palettes - Dark */
+  --md-sys-color-primary: #9ecaff;
+  --md-sys-color-on-primary: #003258;
+  --md-sys-color-primary-container: #00497d;
+  --md-sys-color-on-primary-container: #d1e4ff;
+
+  /* M3 Secondary - Dark */
+  --md-sys-color-secondary: #b8c8da;
+  --md-sys-color-on-secondary: #233240;
+  --md-sys-color-secondary-container: #3a4857;
+  --md-sys-color-on-secondary-container: #d4e4f6;
+
+  /* M3 Tertiary - Dark */
+  --md-sys-color-tertiary: #d2bfe6;
+  --md-sys-color-on-tertiary: #382a4a;
+  --md-sys-color-tertiary-container: #4f4061;
+  --md-sys-color-on-tertiary-container: #eedcff;
+
+  /* M3 Error - Dark */
+  --md-sys-color-error: #ffb4ab;
+  --md-sys-color-on-error: #690005;
+  --md-sys-color-error-container: #93000a;
+  --md-sys-color-on-error-container: #ffdad6;
+
+  /* M3 Background & Surfaces - Dark */
+  --md-sys-color-background: #101317;
+  --md-sys-color-on-background: #e2e2e6;
+
+  --md-sys-color-surface: #101317;
+  --md-sys-color-surface-dim: #101317;
+  --md-sys-color-surface-bright: #36393e;
+  --md-sys-color-surface-container-lowest: #14171c;
+  --md-sys-color-surface-container-low: #181c21;
+  --md-sys-color-surface-container: #1d2026;
+  --md-sys-color-surface-container-high: #272a31;
+  --md-sys-color-surface-container-highest: #32353d;
+
+  --md-sys-color-on-surface: #e2e2e6;
+  --md-sys-color-on-surface-variant: #c3c7cf;
+
+  /* Outlines & Borders - Dark */
+  --md-sys-color-outline: #8d9199;
+  --md-sys-color-outline-variant: #3a3d45;
+
+  /* Subject Badge Tonal Accents - Dark High Contrast */
+  --subject-math: #a8c7fa;
+  --subject-math-bg: #072758;
+  --subject-physics: #e1bee7;
+  --subject-physics-bg: #38006b;
+  --subject-chem: #80cbc4;
+  --subject-chem-bg: #00332c;
+  --subject-bio: #a5d6a7;
+  --subject-bio-bg: #0d3810;
+}

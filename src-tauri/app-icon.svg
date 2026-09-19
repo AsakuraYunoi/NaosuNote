@@ -1,0 +1,42 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg-grad" x1="120" y1="80" x2="904" y2="944" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00639b"/>
+      <stop offset="50%" stop-color="#004d7a"/>
+      <stop offset="100%" stop-color="#002d48"/>
+    </linearGradient>
+
+    <linearGradient id="pen-grad" x1="420" y1="520" x2="780" y2="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#70b6ff"/>
+      <stop offset="100%" stop-color="#d0e4ff"/>
+    </linearGradient>
+
+    <filter id="shadow" x="160" y="160" width="704" height="704" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="20" stdDeviation="28" flood-color="#001827" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <!-- Squircle Rounded App Icon Base -->
+  <rect x="64" y="64" width="896" height="896" rx="220" fill="url(#bg-grad)"/>
+
+  <!-- Inner Edge Highlight -->
+  <rect x="64" y="64" width="896" height="896" rx="220" stroke="white" stroke-width="4" stroke-opacity="0.18"/>
+
+  <!-- Main Symbol Group with Drop Shadow -->
+  <g filter="url(#shadow)">
+    <!-- Notebook Body -->
+    <path d="M280 260H640C684.183 260 720 295.817 720 340V684C720 728.183 684.183 764 640 764H280V260Z" 
+          stroke="#ffffff" stroke-width="50" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.9"/>
+
+    <!-- Notebook Spine Detail -->
+    <line x1="360" y1="260" x2="360" y2="764" stroke="#ffffff" stroke-width="26" stroke-linecap="round" stroke-opacity="0.35"/>
+
+    <!-- Notebook Ruled Lines -->
+    <line x1="440" y1="380" x2="620" y2="380" stroke="#ffffff" stroke-width="24" stroke-linecap="round" stroke-opacity="0.25"/>
+    <line x1="440" y1="475" x2="550" y2="475" stroke="#ffffff" stroke-width="24" stroke-linecap="round" stroke-opacity="0.25"/>
+
+    <!-- Dynamic STEM Checkmark / Precision Stroke -->
+    <path d="M420 540L530 650L770 360" 
+          stroke="url(#pen-grad)" stroke-width="62" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
