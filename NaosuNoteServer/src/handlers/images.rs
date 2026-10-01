@@ -28,22 +28,59 @@ pub async fn check_missing_images(
         }
     };
 
-    let client_set: std::collections::HashSet<String> = req.client_image_filenames.into_iter().collect();
-    let server_set: std::collections::HashSet<String> = server_images.into_iter().collect();
+    let user_img_dir = StdPath::new(&state.config.storage.local_root)
+        .join(&auth_user.uuid)
+        .join("images");
 
-    let mut need_upload = Vec::new();
-    for c_img in &client_set {
-        if !server_set.contains(c_img) {
-            need_upload.push(c_img.clone());
-        }
-    }
+    // 仅确认物理文件确实存在于服务器磁盘上的图片
+    let server_set: std::collections::HashSet<String> = server_images
+        .into_iter()
+        .filter(|img| user_img_dir.join(img).exists())
+        .collect();
 
-    let mut need_download = Vec::new();
-    for s_img in &server_set {
-        if !client_set.contains(s_img) {
-            need_download.push(s_img.clone());
+    let (need_upload, need_download) = if req.local_disk_filenames.is_some() || req.required_filenames.is_some() {
+        let local_disk = req.local_disk_filenames.unwrap_or_default();
+        let required = req.required_filenames.unwrap_or_default();
+        let local_set: std::collections::HashSet<String> = local_disk.into_iter().collect();
+        let required_set: std::collections::HashSet<String> = required.into_iter().collect();
+
+        // 待上传：客户端本地物理存在，但服务端不存在的图片
+        let mut upload = Vec::new();
+        for l_img in &local_set {
+            if !server_set.contains(l_img) {
+                upload.push(l_img.clone());
+            }
         }
-    }
+
+        // 待下载：客户端错题元数据中声明需要，且服务端已存储，但客户端物理磁盘缺失的图片
+        let mut download = Vec::new();
+        for r_img in &required_set {
+            if server_set.contains(r_img) && !local_set.contains(r_img) {
+                download.push(r_img.clone());
+            }
+        }
+
+        (upload, download)
+    } else {
+        // 兼容旧格式请求
+        let client_images = req.client_image_filenames.unwrap_or_default();
+        let client_set: std::collections::HashSet<String> = client_images.into_iter().collect();
+
+        let mut need_upload = Vec::new();
+        for c_img in &client_set {
+            if !server_set.contains(c_img) {
+                need_upload.push(c_img.clone());
+            }
+        }
+
+        let mut need_download = Vec::new();
+        for s_img in &server_set {
+            if !client_set.contains(s_img) {
+                need_download.push(s_img.clone());
+            }
+        }
+        (need_upload, need_download)
+    };
 
     Json(ApiResponse::success(CheckMissingImagesResponse {
         need_upload,

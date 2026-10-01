@@ -572,7 +572,14 @@ async function handleTriggerCloudSync() {
     lastSyncTimeText.value = `今天 ${timeStr}`;
     localStorage.setItem('naosu_last_sync_time', lastSyncTimeText.value);
 
-    emit('notify', `云端同步成功！拉取 ${res.pulledProblems} 题，推送 ${res.pushedProblems} 题`);
+    const details: string[] = [];
+    if (res.pulledProblems > 0) details.push(`拉取 ${res.pulledProblems} 题`);
+    if (res.pushedProblems > 0) details.push(`推送 ${res.pushedProblems} 题`);
+    if (res.downloadedImages > 0) details.push(`下载 ${res.downloadedImages} 张图片`);
+    if (res.uploadedImages > 0) details.push(`上传 ${res.uploadedImages} 张图片`);
+    if (res.deletedProblems > 0) details.push(`同步删除 ${res.deletedProblems} 题`);
+    const summaryMsg = details.length > 0 ? `云端同步成功！已${details.join('，')}` : '云端同步完成，数据已为最新状态！';
+    emit('notify', summaryMsg);
     await refreshData();
   } catch (err: any) {
     emit('notify', '云端同步失败: ' + (err?.message || err));

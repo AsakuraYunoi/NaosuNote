@@ -160,12 +160,20 @@ pub struct PushRequest {
 #[derive(Debug, Serialize)]
 pub struct PushResponse {
     pub applied_count: usize,
+    pub applied_problems: usize,
+    pub applied_notebooks: usize,
+    pub applied_tags: usize,
     pub server_timestamp: i64,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct CheckMissingImagesRequest {
-    pub client_image_filenames: Vec<String>,
+    #[serde(default)]
+    pub client_image_filenames: Option<Vec<String>>,
+    #[serde(default)]
+    pub local_disk_filenames: Option<Vec<String>>,
+    #[serde(default)]
+    pub required_filenames: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]

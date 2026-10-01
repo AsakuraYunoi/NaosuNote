@@ -65,11 +65,18 @@ impl DbManager {
             [],
         )?;
 
-        // 容错：旧表可能没有 notebook_id 列或 tags 列，尝试添加
+        // 容错：旧表可能没有某些列，通过 ALTER TABLE 增量补充
         let _ = conn.execute("ALTER TABLE problems ADD COLUMN notebook_id TEXT;", []);
         let _ = conn.execute("ALTER TABLE problems ADD COLUMN tags TEXT DEFAULT '[]';", []);
         let _ = conn.execute("ALTER TABLE problems ADD COLUMN answer_markdown TEXT DEFAULT '';", []);
         let _ = conn.execute("ALTER TABLE problems ADD COLUMN answer_images TEXT DEFAULT '[]';", []);
+        let _ = conn.execute("ALTER TABLE problems ADD COLUMN is_deleted INTEGER DEFAULT 0;", []);
+        let _ = conn.execute("ALTER TABLE problems ADD COLUMN updated_at DATETIME;", []);
+        let _ = conn.execute("UPDATE problems SET updated_at = created_at WHERE updated_at IS NULL;", []);
+
+        let _ = conn.execute("ALTER TABLE notebooks ADD COLUMN is_deleted INTEGER DEFAULT 0;", []);
+        let _ = conn.execute("ALTER TABLE notebooks ADD COLUMN updated_at DATETIME;", []);
+        let _ = conn.execute("UPDATE notebooks SET updated_at = created_at WHERE updated_at IS NULL;", []);
 
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_subject ON problems(subject);",
@@ -81,6 +88,14 @@ impl DbManager {
         )?;
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_date ON problems(date);",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_problems_deleted ON problems(is_deleted);",
+            [],
+        )?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_notebooks_deleted ON notebooks(is_deleted);",
             [],
         )?;
 
@@ -100,7 +115,7 @@ impl DbManager {
         for sub in &default_subjects {
             let count: i64 = conn
                 .query_row(
-                    "SELECT COUNT(*) FROM notebooks WHERE subject = ?1",
+                    "SELECT COUNT(*) FROM notebooks WHERE subject = ?1 AND is_deleted = 0",
                     params![sub],
                     |row| row.get(0),
                 )
@@ -110,22 +125,23 @@ impl DbManager {
                 let nb_id = Uuid::new_v4().to_string();
                 let nb_name = format!("{}错题本", sub);
                 let _ = conn.execute(
-                    "INSERT OR IGNORE INTO notebooks (id, name, subject) VALUES (?1, ?2, ?3)",
+                    "INSERT OR IGNORE INTO notebooks (id, name, subject, is_deleted, created_at, updated_at) VALUES (?1, ?2, ?3, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
                     params![nb_id, nb_name, sub],
                 );
             }
         }
 
-        // 自动自愈孤儿错题：将 notebook_id 为空或无效的错题，自动绑定到该学科最早创建的错题本中
+        // 自动自愈孤儿错题：将 notebook_id 为空或无效且未删除的错题，自动绑定到该学科最早创建的未删除错题本中
         let _ = conn.execute(
             "UPDATE problems 
              SET notebook_id = (
                  SELECT id FROM notebooks 
-                 WHERE notebooks.subject = problems.subject 
+                 WHERE notebooks.subject = problems.subject AND notebooks.is_deleted = 0
                  ORDER BY created_at ASC LIMIT 1
              )
-             WHERE (notebook_id IS NULL OR notebook_id = '' OR notebook_id NOT IN (SELECT id FROM notebooks))
-               AND EXISTS (SELECT 1 FROM notebooks WHERE notebooks.subject = problems.subject);",
+             WHERE problems.is_deleted = 0
+               AND (notebook_id IS NULL OR notebook_id = '' OR notebook_id NOT IN (SELECT id FROM notebooks WHERE is_deleted = 0))
+               AND EXISTS (SELECT 1 FROM notebooks WHERE notebooks.subject = problems.subject AND notebooks.is_deleted = 0);",
             [],
         );
 
@@ -167,7 +183,7 @@ impl DbManager {
         let _ = self.ensure_default_notebooks();
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT id, name, subject, created_at FROM notebooks ORDER BY created_at ASC",
+            "SELECT id, name, subject, created_at, updated_at, is_deleted FROM notebooks WHERE is_deleted = 0 ORDER BY created_at ASC",
         )?;
         let iter = stmt.query_map([], |row| {
             Ok(Notebook {
@@ -175,6 +191,31 @@ impl DbManager {
                 name: row.get(1)?,
                 subject: row.get(2)?,
                 created_at: row.get(3)?,
+                updated_at: row.get(4)?,
+                is_deleted: row.get(5).unwrap_or(0),
+            })
+        })?;
+
+        let mut list = Vec::new();
+        for item in iter {
+            list.push(item?);
+        }
+        Ok(list)
+    }
+
+    pub fn get_notebooks_for_sync(&self) -> Result<Vec<Notebook>> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, subject, created_at, updated_at, is_deleted FROM notebooks",
+        )?;
+        let iter = stmt.query_map([], |row| {
+            Ok(Notebook {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                subject: row.get(2)?,
+                created_at: row.get(3)?,
+                updated_at: row.get(4)?,
+                is_deleted: row.get(5).unwrap_or(0),
             })
         })?;
 
@@ -189,7 +230,7 @@ impl DbManager {
         let conn = self.get_connection()?;
         let id = Uuid::new_v4().to_string();
         conn.execute(
-            "INSERT INTO notebooks (id, name, subject) VALUES (?1, ?2, ?3)",
+            "INSERT INTO notebooks (id, name, subject, is_deleted, created_at, updated_at) VALUES (?1, ?2, ?3, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
             params![id, name, subject],
         )?;
 
@@ -198,13 +239,57 @@ impl DbManager {
             name: name.to_string(),
             subject: subject.to_string(),
             created_at: None,
+            updated_at: None,
+            is_deleted: 0,
+        })
+    }
+
+    pub fn upsert_notebook(&self, id: &str, name: &str, subject: &str) -> Result<Notebook> {
+        let conn = self.get_connection()?;
+        // 检查是否有重名但不同 id 的未删除错题本
+        let existing_id_with_name: Option<String> = conn
+            .query_row(
+                "SELECT id FROM notebooks WHERE name = ?1 AND is_deleted = 0",
+                params![name],
+                |r| r.get(0),
+            )
+            .ok();
+
+        if let Some(existing_id) = existing_id_with_name {
+            if existing_id != id {
+                let _ = conn.execute(
+                    "UPDATE problems SET notebook_id = ?1 WHERE notebook_id = ?2",
+                    params![id, existing_id],
+                );
+                let _ = conn.execute("DELETE FROM notebooks WHERE id = ?1", params![existing_id]);
+            }
+        }
+
+        conn.execute(
+            "INSERT INTO notebooks (id, name, subject, is_deleted, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+             ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                subject = excluded.subject,
+                is_deleted = 0,
+                updated_at = CURRENT_TIMESTAMP;",
+            params![id, name, subject],
+        )?;
+
+        Ok(Notebook {
+            id: id.to_string(),
+            name: name.to_string(),
+            subject: subject.to_string(),
+            created_at: None,
+            updated_at: None,
+            is_deleted: 0,
         })
     }
 
     pub fn rename_notebook(&self, id: &str, new_name: &str) -> Result<()> {
         let conn = self.get_connection()?;
         conn.execute(
-            "UPDATE notebooks SET name = ?1 WHERE id = ?2",
+            "UPDATE notebooks SET name = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2",
             params![new_name, id],
         )?;
         Ok(())
@@ -212,15 +297,21 @@ impl DbManager {
 
     pub fn delete_notebook(&self, id: &str) -> Result<()> {
         let conn = self.get_connection()?;
-        // 删除错题本，并将关联错题置空或者删除
-        conn.execute("DELETE FROM problems WHERE notebook_id = ?1", params![id])?;
-        conn.execute("DELETE FROM notebooks WHERE id = ?1", params![id])?;
+        // 软删除错题本，并将关联错题也标记为软删除以支持云端同步
+        conn.execute(
+            "UPDATE problems SET is_deleted = 1, updated_at = CURRENT_TIMESTAMP WHERE notebook_id = ?1",
+            params![id],
+        )?;
+        conn.execute(
+            "UPDATE notebooks SET is_deleted = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?1",
+            params![id],
+        )?;
         Ok(())
     }
 
     pub fn get_notebook_by_id(&self, id: &str) -> Result<Option<Notebook>> {
         let conn = self.get_connection()?;
-        let mut stmt = conn.prepare("SELECT id, name, subject, created_at FROM notebooks WHERE id = ?1")?;
+        let mut stmt = conn.prepare("SELECT id, name, subject, created_at, updated_at, is_deleted FROM notebooks WHERE id = ?1 AND is_deleted = 0")?;
         let mut rows = stmt.query(params![id])?;
         if let Some(row) = rows.next()? {
             Ok(Some(Notebook {
@@ -228,6 +319,8 @@ impl DbManager {
                 name: row.get(1)?,
                 subject: row.get(2)?,
                 created_at: row.get(3)?,
+                updated_at: row.get(4)?,
+                is_deleted: row.get(5).unwrap_or(0),
             }))
         } else {
             Ok(None)
@@ -249,7 +342,7 @@ impl DbManager {
         end_date: Option<String>,
     ) -> Result<Vec<Problem>> {
         let conn = self.get_connection()?;
-        let mut query = "SELECT uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, answer_markdown, answer_images, created_at, updated_at FROM problems WHERE 1=1".to_string();
+        let mut query = "SELECT uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, answer_markdown, answer_images, created_at, updated_at, is_deleted FROM problems WHERE is_deleted = 0".to_string();
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
         if let Some(nid) = notebook_id {
@@ -350,6 +443,44 @@ impl DbManager {
                 answer_images: img_vec,
                 created_at: row.get(13)?,
                 updated_at: row.get(14)?,
+                is_deleted: row.get(15).unwrap_or(0),
+            })
+        })?;
+
+        let mut problems = Vec::new();
+        for p in problem_iter {
+            problems.push(p?);
+        }
+        Ok(problems)
+    }
+
+    pub fn get_problems_for_sync(&self) -> Result<Vec<Problem>> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare(
+            "SELECT uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, answer_markdown, answer_images, created_at, updated_at, is_deleted FROM problems",
+        )?;
+        let problem_iter = stmt.query_map([], |row| {
+            let tags_json: Option<String> = row.get(10)?;
+            let tags_vec = tags_json.and_then(|s| serde_json::from_str(&s).ok());
+            let img_json: Option<String> = row.get(12)?;
+            let img_vec = img_json.and_then(|s| serde_json::from_str(&s).ok());
+            Ok(Problem {
+                uuid: row.get(0)?,
+                notebook_id: row.get(1)?,
+                subject: row.get(2)?,
+                problem_type: row.get(3)?,
+                date: row.get(4)?,
+                summary: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
+                raw_html: row.get(6)?,
+                stem_clean_text: row.get(7)?,
+                difficulty: row.get(8)?,
+                importance: row.get(9)?,
+                tags: tags_vec,
+                answer_markdown: row.get(11)?,
+                answer_images: img_vec,
+                created_at: row.get(13)?,
+                updated_at: row.get(14)?,
+                is_deleted: row.get(15).unwrap_or(0),
             })
         })?;
 
@@ -363,7 +494,7 @@ impl DbManager {
     pub fn get_problem_by_uuid(&self, uuid: &str) -> Result<Option<Problem>> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, answer_markdown, answer_images, created_at, updated_at FROM problems WHERE uuid = ?1",
+            "SELECT uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, answer_markdown, answer_images, created_at, updated_at, is_deleted FROM problems WHERE uuid = ?1 AND is_deleted = 0",
         )?;
         let mut rows = stmt.query(params![uuid])?;
         if let Some(row) = rows.next()? {
@@ -387,6 +518,7 @@ impl DbManager {
                 answer_images: img_vec,
                 created_at: row.get(13)?,
                 updated_at: row.get(14)?,
+                is_deleted: row.get(15).unwrap_or(0),
             }))
         } else {
             Ok(None)
@@ -397,37 +529,80 @@ impl DbManager {
         let conn = self.get_connection()?;
         let tags_json = serde_json::to_string(&problem.tags.clone().unwrap_or_default()).unwrap_or_else(|_| "[]".to_string());
         let answer_images_json = serde_json::to_string(&problem.answer_images.clone().unwrap_or_default()).unwrap_or_else(|_| "[]".to_string());
-        conn.execute(
-            "INSERT INTO problems (uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, answer_markdown, answer_images, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-             ON CONFLICT(uuid) DO UPDATE SET
-                notebook_id = excluded.notebook_id,
-                subject = excluded.subject,
-                type = excluded.type,
-                date = excluded.date,
-                summary = excluded.summary,
-                raw_html = excluded.raw_html,
-                stem_clean_text = excluded.stem_clean_text,
-                tags = excluded.tags,
-                answer_markdown = excluded.answer_markdown,
-                answer_images = excluded.answer_images,
-                updated_at = CURRENT_TIMESTAMP;",
-            params![
-                problem.uuid,
-                problem.notebook_id,
-                problem.subject,
-                problem.problem_type,
-                problem.date,
-                problem.summary,
-                problem.raw_html,
-                problem.stem_clean_text,
-                problem.difficulty,
-                problem.importance,
-                tags_json,
-                problem.answer_markdown.clone().unwrap_or_default(),
-                answer_images_json
-            ],
-        )?;
+        let custom_u_at = problem.updated_at.as_deref();
+
+        if let Some(ts) = custom_u_at {
+            conn.execute(
+                "INSERT INTO problems (uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, answer_markdown, answer_images, is_deleted, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 0, CURRENT_TIMESTAMP, ?14)
+                 ON CONFLICT(uuid) DO UPDATE SET
+                    notebook_id = excluded.notebook_id,
+                    subject = excluded.subject,
+                    type = excluded.type,
+                    date = excluded.date,
+                    summary = excluded.summary,
+                    raw_html = excluded.raw_html,
+                    stem_clean_text = excluded.stem_clean_text,
+                    difficulty = excluded.difficulty,
+                    importance = excluded.importance,
+                    tags = excluded.tags,
+                    answer_markdown = excluded.answer_markdown,
+                    answer_images = excluded.answer_images,
+                    is_deleted = 0,
+                    updated_at = ?14;",
+                params![
+                    problem.uuid,
+                    problem.notebook_id,
+                    problem.subject,
+                    problem.problem_type,
+                    problem.date,
+                    problem.summary,
+                    problem.raw_html,
+                    problem.stem_clean_text,
+                    problem.difficulty,
+                    problem.importance,
+                    tags_json,
+                    problem.answer_markdown.clone().unwrap_or_default(),
+                    answer_images_json,
+                    ts,
+                ],
+            )?;
+        } else {
+            conn.execute(
+                "INSERT INTO problems (uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, answer_markdown, answer_images, is_deleted, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                 ON CONFLICT(uuid) DO UPDATE SET
+                    notebook_id = excluded.notebook_id,
+                    subject = excluded.subject,
+                    type = excluded.type,
+                    date = excluded.date,
+                    summary = excluded.summary,
+                    raw_html = excluded.raw_html,
+                    stem_clean_text = excluded.stem_clean_text,
+                    difficulty = excluded.difficulty,
+                    importance = excluded.importance,
+                    tags = excluded.tags,
+                    answer_markdown = excluded.answer_markdown,
+                    answer_images = excluded.answer_images,
+                    is_deleted = 0,
+                    updated_at = CURRENT_TIMESTAMP;",
+                params![
+                    problem.uuid,
+                    problem.notebook_id,
+                    problem.subject,
+                    problem.problem_type,
+                    problem.date,
+                    problem.summary,
+                    problem.raw_html,
+                    problem.stem_clean_text,
+                    problem.difficulty,
+                    problem.importance,
+                    tags_json,
+                    problem.answer_markdown.clone().unwrap_or_default(),
+                    answer_images_json,
+                ],
+            )?;
+        }
         Ok(())
     }
 
@@ -525,7 +700,7 @@ impl DbManager {
         notebook_id: Option<&str>,
     ) -> Result<Vec<crate::models::TagCount>> {
         let conn = self.get_connection()?;
-        let mut query = "SELECT tags FROM problems WHERE 1=1".to_string();
+        let mut query = "SELECT tags FROM problems WHERE is_deleted = 0".to_string();
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
         if let Some(sub) = subject {
@@ -587,15 +762,18 @@ impl DbManager {
 
     pub fn delete_problem(&self, uuid: &str) -> Result<()> {
         let conn = self.get_connection()?;
-        conn.execute("DELETE FROM problems WHERE uuid = ?1", params![uuid])?;
+        conn.execute(
+            "UPDATE problems SET is_deleted = 1, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?1",
+            params![uuid],
+        )?;
         Ok(())
     }
 
     pub fn get_problems_by_notebook(&self, notebook_id: &str) -> Result<Vec<Problem>> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, answer_markdown, answer_images, created_at, updated_at 
-             FROM problems WHERE notebook_id = ?1 ORDER BY date DESC, created_at DESC",
+            "SELECT uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, answer_markdown, answer_images, created_at, updated_at, is_deleted 
+             FROM problems WHERE notebook_id = ?1 AND is_deleted = 0 ORDER BY date DESC, created_at DESC",
         )?;
         let iter = stmt.query_map(params![notebook_id], |row| {
             let tags_json: Option<String> = row.get(10)?;
@@ -618,6 +796,7 @@ impl DbManager {
                 answer_images: img_vec,
                 created_at: row.get(13)?,
                 updated_at: row.get(14)?,
+                is_deleted: row.get(15).unwrap_or(0),
             })
         })?;
 
@@ -668,7 +847,7 @@ impl DbManager {
         for old_uuid in uuids {
             let p_opt: Option<Problem> = {
                 let mut stmt = tx.prepare(
-                    "SELECT uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, answer_markdown, answer_images, created_at, updated_at 
+                    "SELECT uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, answer_markdown, answer_images, created_at, updated_at, is_deleted 
                      FROM problems WHERE uuid = ?1",
                 )?;
                 let mut rows = stmt.query_map(params![old_uuid], |row| {
@@ -692,6 +871,7 @@ impl DbManager {
                         answer_images: img_vec,
                         created_at: row.get(13)?,
                         updated_at: row.get(14)?,
+                        is_deleted: row.get(15).unwrap_or(0),
                     })
                 })?;
                 if let Some(r) = rows.next() {
@@ -744,7 +924,10 @@ impl DbManager {
         let tx = conn.transaction()?;
         let mut count = 0;
         for uuid in uuids {
-            count += tx.execute("DELETE FROM problems WHERE uuid = ?1", params![uuid])?;
+            count += tx.execute(
+                "UPDATE problems SET is_deleted = 1, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?1",
+                params![uuid],
+            )?;
         }
         tx.commit()?;
         Ok(count)
@@ -898,3 +1081,35 @@ impl DbManager {
         Ok(updated_count)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_migration() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE notebooks (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                subject TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO notebooks (id, name, subject) VALUES ('1', '数学错题本', '数学');",
+            [],
+        ).unwrap();
+
+        assert!(conn.execute("ALTER TABLE notebooks ADD COLUMN is_deleted INTEGER DEFAULT 0;", []).is_ok());
+        assert!(conn.execute("ALTER TABLE notebooks ADD COLUMN updated_at DATETIME;", []).is_ok());
+        assert!(conn.execute("UPDATE notebooks SET updated_at = created_at WHERE updated_at IS NULL;", []).is_ok());
+
+        let stmt = conn.prepare("SELECT id, name, subject, created_at, updated_at, is_deleted FROM notebooks;").unwrap();
+        let cols = stmt.column_names();
+        assert_eq!(cols, &["id", "name", "subject", "created_at", "updated_at", "is_deleted"]);
+    }
+}
+

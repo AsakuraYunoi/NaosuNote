@@ -266,6 +266,30 @@ export async function apiCreateNotebook(name: string, subject: string): Promise<
   return nb;
 }
 
+export async function apiUpsertNotebook(id: string, name: string, subject: string): Promise<Notebook> {
+  const invoke = await getInvoke();
+  if (invoke) {
+    return await invoke('upsert_notebook', { id, name, subject });
+  }
+  let existing = mockNotebooks.find((n) => n.id === id);
+  if (existing) {
+    existing.name = name;
+    existing.subject = subject;
+    return existing;
+  }
+  const nb: Notebook = { id, name, subject };
+  mockNotebooks.push(nb);
+  return nb;
+}
+
+export async function apiGetNotebooksForSync(): Promise<Notebook[]> {
+  const invoke = await getInvoke();
+  if (invoke) {
+    return await invoke('get_notebooks_for_sync');
+  }
+  return mockNotebooks;
+}
+
 export async function apiRenameNotebook(id: string, newName: string): Promise<void> {
   const invoke = await getInvoke();
   if (invoke) {
@@ -295,6 +319,14 @@ export async function apiExportNotebookHtml(id: string): Promise<string | null> 
 }
 
 // --- 错题 API ---
+
+export async function apiGetProblemsForSync(): Promise<Problem[]> {
+  const invoke = await getInvoke();
+  if (invoke) {
+    return await invoke('get_problems_for_sync');
+  }
+  return mockStorage;
+}
 
 export async function apiGetProblems(
   notebookId?: string,
@@ -791,6 +823,27 @@ export async function apiReadAnswerImage(filename: string): Promise<Uint8Array |
   return null;
 }
 
+export async function apiSaveAnswerImageByFilename(
+  filename: string,
+  imageBytes: Uint8Array
+): Promise<void> {
+  const invoke = await getInvoke();
+  if (invoke) {
+    await invoke('save_answer_image_by_filename', {
+      filename,
+      imageBytes: Array.from(imageBytes),
+    });
+  }
+}
+
+export async function apiGetLocalImageFilenames(): Promise<string[]> {
+  const invoke = await getInvoke();
+  if (invoke) {
+    return await invoke('get_local_image_filenames');
+  }
+  return [];
+}
+
 export async function apiUpdateProblemAnswer(
   uuid: string,
   answerMarkdown: string,
@@ -1071,8 +1124,19 @@ export async function apiGetProfileSummary(): Promise<ProfileSummary> {
 export interface SyncResult {
   pulledProblems: number;
   pushedProblems: number;
+  pulledNotebooks: number;
+  pushedNotebooks: number;
   uploadedImages: number;
   downloadedImages: number;
+  deletedProblems: number;
+}
+
+export function parseSqliteUtcToMs(timeStr?: string): number {
+  if (!timeStr) return 0;
+  if (/^\d+$/.test(timeStr)) return Number(timeStr);
+  const iso = timeStr.replace(' ', 'T') + (timeStr.endsWith('Z') ? '' : 'Z');
+  const t = Date.parse(iso);
+  return isNaN(t) ? 0 : t;
 }
 
 export async function apiSyncCloud(
@@ -1087,8 +1151,11 @@ export async function apiSyncCloud(
   const result: SyncResult = {
     pulledProblems: 0,
     pushedProblems: 0,
+    pulledNotebooks: 0,
+    pushedNotebooks: 0,
     uploadedImages: 0,
     downloadedImages: 0,
+    deletedProblems: 0,
   };
 
   onProgress?.('正在校验云端凭证...');
@@ -1113,41 +1180,67 @@ export async function apiSyncCloud(
 
   const { notebooks: remoteNotebooks, problems: remoteProblems, tags: _remoteTags, server_timestamp } = pullJson.data;
 
-  // 将远程数据合并到本地
+  // 获取本地已有错题本与错题进行精确比对
+  const localProblems = await apiGetProblemsForSync();
+  const localProblemsMap = new Map<string, Problem>(localProblems.map((p) => [p.uuid, p]));
+
+  // 将远程错题本增量合并到本地
   for (const nb of remoteNotebooks || []) {
     if (nb.is_deleted) {
-      try { await apiDeleteNotebook(nb.id); } catch (_) {}
+      try {
+        await apiDeleteNotebook(nb.id);
+      } catch (_) {}
     } else {
       try {
-        const localNbs = await apiGetNotebooks();
-        const exists = localNbs.find((n: Notebook) => n.id === nb.id);
-        if (!exists) {
-          await apiCreateNotebook(nb.name, nb.subject);
-        } else if (exists.name !== nb.name) {
-          await apiRenameNotebook(nb.id, nb.name);
-        }
-      } catch (_) {}
+        await apiUpsertNotebook(nb.id, nb.name, nb.subject);
+        result.pulledNotebooks++;
+      } catch (e) {
+        console.warn('Failed to upsert pulled notebook:', nb.id, e);
+      }
     }
   }
 
+  // 将远程错题合并到本地
   for (const prob of remoteProblems || []) {
     if (prob.is_deleted) {
-      try { await apiDeleteProblem(prob.uuid); } catch (_) {}
+      try {
+        const local = localProblemsMap.get(prob.uuid);
+        if (local && !local.is_deleted) {
+          await apiDeleteProblem(prob.uuid);
+          result.deletedProblems++;
+        }
+      } catch (_) {}
     } else {
       try {
+        const local = localProblemsMap.get(prob.uuid);
+        const localUpdatedMs = parseSqliteUtcToMs(local?.updated_at);
+        // 如果本地已存在且本地修改时间晚于云端数据，保留本地修改以防回滚
+        if (local && !local.is_deleted && localUpdatedMs >= prob.updated_at) {
+          continue;
+        }
+
+        const dateStr = prob.date || new Date().toISOString().split('T')[0];
+        const updatedSqliteStr = new Date(prob.updated_at || Date.now())
+          .toISOString()
+          .replace('T', ' ')
+          .replace(/\..+/, '');
+
         await apiSaveProblem({
           uuid: prob.uuid,
           notebook_id: prob.notebook_id,
           subject: prob.subject,
           type: prob.problem_type || prob.type || '简答',
-          date: prob.date || new Date().toISOString().split('T')[0],
+          date: dateStr,
           summary: prob.summary,
           raw_html: prob.raw_html,
           stem_clean_text: prob.stem_clean_text,
           tags: prob.tags,
           answer_markdown: prob.answer_markdown,
           answer_images: prob.answer_images,
+          updated_at: updatedSqliteStr,
+          is_deleted: 0,
         });
+
         if (prob.difficulty) {
           await apiUpdateRatings(prob.uuid, prob.difficulty, prob.importance || 1);
         }
@@ -1160,35 +1253,45 @@ export async function apiSyncCloud(
 
   // 2. Push 阶段：推送本地修改到云端
   onProgress?.('正在推送本地最新变更...');
-  const localProblems = await apiGetProblems();
-  const localNotebooks = await apiGetNotebooks();
+  const currentLocalProblems = await apiGetProblemsForSync();
+  const currentLocalNotebooks = await apiGetNotebooksForSync();
   const localTags = await apiGetTags();
+
+  // 精准提取本地真实 updated_at
+  const pushNotebooks = currentLocalNotebooks.map((n: Notebook) => ({
+    id: n.id,
+    name: n.name,
+    subject: n.subject,
+    is_deleted: n.is_deleted ? 1 : 0,
+    updated_at: parseSqliteUtcToMs(n.updated_at) || Date.now(),
+  }));
+
+  const pushProblems = currentLocalProblems.map((p: Problem) => ({
+    uuid: p.uuid,
+    notebook_id: p.notebook_id,
+    subject: p.subject,
+    type: p.type,
+    summary: p.summary,
+    raw_html: p.raw_html,
+    stem_clean_text: p.stem_clean_text,
+    difficulty: p.difficulty,
+    importance: p.importance,
+    tags: p.tags,
+    answer_markdown: p.answer_markdown,
+    answer_images: p.answer_images,
+    is_deleted: p.is_deleted ? 1 : 0,
+    updated_at: parseSqliteUtcToMs(p.updated_at) || Date.now(),
+  }));
+
+  // 若不是首次同步，可仅筛选有实质修改的数据推送（容许 5s 时钟漂移）
+  const thresholdMs = lastSyncTimestamp > 0 ? Math.max(0, lastSyncTimestamp - 5000) : 0;
+  const filteredProblems = pushProblems.filter((p) => p.updated_at >= thresholdMs);
+  const filteredNotebooks = pushNotebooks.filter((n) => n.updated_at >= thresholdMs);
 
   const pushPayload = {
     client_timestamp: Date.now(),
-    notebooks: localNotebooks.map((n: Notebook) => ({
-      id: n.id,
-      name: n.name,
-      subject: n.subject,
-      is_deleted: 0,
-      updated_at: Date.now(),
-    })),
-    problems: localProblems.map((p: Problem) => ({
-      uuid: p.uuid,
-      notebook_id: p.notebook_id,
-      subject: p.subject,
-      type: p.type,
-      summary: p.summary,
-      raw_html: p.raw_html,
-      stem_clean_text: p.stem_clean_text,
-      difficulty: p.difficulty,
-      importance: p.importance,
-      tags: p.tags,
-      answer_markdown: p.answer_markdown,
-      answer_images: p.answer_images,
-      is_deleted: 0,
-      updated_at: Date.now(),
-    })),
+    notebooks: filteredNotebooks,
+    problems: filteredProblems,
     tags: localTags.map((t: TagCount) => ({
       name: t.name,
       is_deleted: 0,
@@ -1207,15 +1310,23 @@ export async function apiSyncCloud(
 
   const pushJson = await pushRes.json();
   if (pushRes.ok && pushJson.code === 200) {
-    result.pushedProblems = pushJson.data?.applied_count || 0;
+    result.pushedProblems = pushJson.data?.applied_problems ?? pushJson.data?.applied_count ?? 0;
+    result.pushedNotebooks = pushJson.data?.applied_notebooks ?? 0;
   }
 
-  // 3. 图片资源比对与同步
-  onProgress?.('正在比对本地与云端图片...');
-  const allLocalImageNames: string[] = [];
-  for (const p of localProblems) {
+  // 3. 图片资源真实磁盘比对与双向同步
+  onProgress?.('正在比对本地磁盘与云端图片...');
+  const localDiskFiles = await apiGetLocalImageFilenames();
+  const allActiveProblems = (await apiGetProblems()).filter((p) => !p.is_deleted);
+  const requiredImageSet = new Set<string>();
+
+  for (const p of allActiveProblems) {
     if (p.answer_images && Array.isArray(p.answer_images)) {
-      allLocalImageNames.push(...p.answer_images);
+      for (const imgName of p.answer_images) {
+        if (imgName && typeof imgName === 'string') {
+          requiredImageSet.add(imgName);
+        }
+      }
     }
   }
 
@@ -1226,7 +1337,11 @@ export async function apiSyncCloud(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ client_image_filenames: allLocalImageNames }),
+      body: JSON.stringify({
+        local_disk_filenames: localDiskFiles,
+        required_filenames: Array.from(requiredImageSet),
+        client_image_filenames: Array.from(requiredImageSet),
+      }),
     });
 
     const checkImgJson = await checkImgRes.json();
@@ -1281,13 +1396,7 @@ export async function apiSyncCloud(
             if (imgRes.ok) {
               const arrayBuf = await imgRes.arrayBuffer();
               const u8 = new Uint8Array(arrayBuf);
-              // 解析 uuid 和 page_index
-              const match = filename.match(/^(.+)_p(\d+)\.webp$/);
-              if (match) {
-                const uuid = match[1];
-                const pIdx = parseInt(match[2], 10);
-                await apiSaveAnswerImage(uuid, pIdx, u8);
-              }
+              await apiSaveAnswerImageByFilename(filename, u8);
               result.downloadedImages++;
             }
           } catch (e) {
@@ -1295,6 +1404,11 @@ export async function apiSyncCloud(
           }
           downIdx++;
           onProgress?.(`正在下载云端图片 (${downIdx}/${need_download.length})...`);
+        }
+
+        // 通知前端界面图片已下载完成，可无感刷新
+        if (typeof window !== 'undefined' && result.downloadedImages > 0) {
+          window.dispatchEvent(new CustomEvent('naosu:images-synced', { detail: { count: result.downloadedImages } }));
         }
       }
     }
@@ -1312,7 +1426,7 @@ export async function apiSyncCloud(
     console.warn('Avatar sync check:', avErr);
   }
 
-  // 4. 更新同步时间戳与本地镜像
+  // 5. 更新同步时间戳与本地镜像
   if (server_timestamp) {
     localStorage.setItem('naosu_last_sync_timestamp', String(server_timestamp));
     const nowStr = new Date(server_timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });

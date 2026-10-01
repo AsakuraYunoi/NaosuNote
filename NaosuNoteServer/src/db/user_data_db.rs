@@ -177,10 +177,12 @@ impl UserDataDb {
         notebooks: Vec<SyncNotebook>,
         problems: Vec<SyncProblem>,
         tags: Vec<SyncTag>,
-    ) -> Result<usize> {
+    ) -> Result<(usize, usize, usize)> {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
-        let mut applied_count = 0;
+        let mut applied_notebooks = 0;
+        let mut applied_problems = 0;
+        let mut applied_tags = 0;
 
         // Upsert Notebooks with LWW
         for nb in notebooks {
@@ -195,7 +197,7 @@ impl UserDataDb {
                  WHERE excluded.updated_at >= sync_notebooks.updated_at;",
                 params![nb.id, user_uuid, nb.name, nb.subject, nb.is_deleted, nb.updated_at],
             )?;
-            applied_count += affected;
+            applied_notebooks += affected;
         }
 
         // Upsert Problems with LWW
@@ -241,7 +243,7 @@ impl UserDataDb {
                     prob.updated_at
                 ],
             )?;
-            applied_count += affected;
+            applied_problems += affected;
         }
 
         // Upsert Tags
@@ -255,11 +257,11 @@ impl UserDataDb {
                  WHERE excluded.updated_at >= sync_tags.updated_at;",
                 params![tag.name, user_uuid, tag.is_deleted, tag.updated_at],
             )?;
-            applied_count += affected;
+            applied_tags += affected;
         }
 
         tx.commit()?;
-        Ok(applied_count)
+        Ok((applied_notebooks, applied_problems, applied_tags))
     }
 
     pub fn get_storage_stats(&self, user_uuid: &str) -> Result<(u64, usize, usize, i64)> {

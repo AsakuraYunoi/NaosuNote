@@ -59,7 +59,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue';
+import { ref, watch, onMounted, onUnmounted } from 'vue';
 import NestedSegmentedControl, {
   type AnswerPrimaryMode,
   type AnswerSubMode,
@@ -284,11 +284,20 @@ function handleGlobalPaste(e: ClipboardEvent) {
   }
 }
 
+function handleImagesSynced() {
+  loadAllImages();
+}
+
 onMounted(() => {
   loadAllImages();
   if (imageFiles.value.length > 0 && !markdownText.value.trim()) {
     primaryMode.value = 'photo';
   }
+  window.addEventListener('naosu:images-synced', handleImagesSynced);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('naosu:images-synced', handleImagesSynced);
 });
 </script>
 

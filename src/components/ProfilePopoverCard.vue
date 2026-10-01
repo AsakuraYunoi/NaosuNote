@@ -719,7 +719,14 @@ async function triggerSync() {
   try {
     if (getAuthToken()) {
       const result = await apiSyncCloud((msg) => emit('notify', msg));
-      emit('notify', `云端同步完成 (拉取 ${result.pulledProblems} 题，推送 ${result.pushedProblems} 题，上传图片 ${result.uploadedImages} 张)`);
+      const details = [];
+      if (result.pulledProblems > 0) details.push(`拉取 ${result.pulledProblems} 题`);
+      if (result.pushedProblems > 0) details.push(`推送 ${result.pushedProblems} 题`);
+      if (result.deletedProblems > 0) details.push(`清理已删 ${result.deletedProblems} 题`);
+      if (result.downloadedImages > 0) details.push(`下载图片 ${result.downloadedImages} 张`);
+      if (result.uploadedImages > 0) details.push(`上传图片 ${result.uploadedImages} 张`);
+      const syncMsg = details.length > 0 ? `云端同步完成 (${details.join('，')})` : '云端同步完成，数据已是最新';
+      emit('notify', syncMsg);
       try {
         const summary = await apiGetProfileSummary();
         if (summary.used_storage_bytes) {

@@ -321,6 +321,31 @@ pub fn create_notebook(
 }
 
 #[tauri::command]
+pub fn upsert_notebook(
+    state: State<AppState>,
+    id: String,
+    name: String,
+    subject: String,
+) -> Result<Notebook, String> {
+    let (nb, data_dir) = {
+        let db = state.db.lock().unwrap();
+        let upserted = db.upsert_notebook(&id, &name, &subject).map_err(|e| e.to_string())?;
+        (upserted, state.data_dir.lock().unwrap().clone())
+    };
+
+    let db = state.db.lock().unwrap();
+    let _ = MirrorManager::sync_notebook_mirror(&db, &data_dir, &nb);
+
+    Ok(nb)
+}
+
+#[tauri::command]
+pub fn get_notebooks_for_sync(state: State<AppState>) -> Result<Vec<Notebook>, String> {
+    let db = state.db.lock().unwrap();
+    db.get_notebooks_for_sync().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn rename_notebook(
     state: State<AppState>,
     id: String,
@@ -410,6 +435,12 @@ pub fn get_problems(
     let db = state.db.lock().unwrap();
     db.get_all_problems(notebook_id, subject, problem_type, tags, search, sort_by, start_date, end_date)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_problems_for_sync(state: State<AppState>) -> Result<Vec<Problem>, String> {
+    let db = state.db.lock().unwrap();
+    db.get_problems_for_sync().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -632,7 +663,8 @@ pub fn save_problem(state: State<AppState>, mut input: ProblemInput) -> Result<P
             answer_markdown: input.answer_markdown.clone(),
             answer_images: input.answer_images.clone(),
             created_at: None,
-            updated_at: None,
+            updated_at: input.updated_at.clone(),
+            is_deleted: input.is_deleted.unwrap_or(0),
         };
 
         db.insert_problem(&problem).map_err(|e| e.to_string())?;
@@ -946,6 +978,52 @@ pub fn read_answer_image(
         return Err(format!("图片不存在: {}", filename));
     }
     fs::read(&target_path).map_err(|e| format!("读取图片文件失败: {}", e))
+}
+
+#[tauri::command]
+pub fn get_local_image_filenames(state: State<AppState>) -> Result<Vec<String>, String> {
+    let data_dir = state.data_dir.lock().unwrap().clone();
+    let img_dir = Path::new(&data_dir).join("ImgData");
+    if !img_dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut files = Vec::new();
+    if let Ok(entries) = fs::read_dir(img_dir) {
+        for entry in entries.flatten() {
+            if let Ok(file_type) = entry.file_type() {
+                if file_type.is_file() {
+                    if let Some(name) = entry.file_name().to_str() {
+                        if !name.starts_with('.') {
+                            files.push(name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(files)
+}
+
+#[tauri::command]
+pub fn save_answer_image_by_filename(
+    state: State<AppState>,
+    filename: String,
+    image_bytes: Vec<u8>,
+) -> Result<(), String> {
+    let clean_filename = Path::new(&filename)
+        .file_name()
+        .and_then(|f| f.to_str())
+        .ok_or_else(|| "非法图片文件名".to_string())?;
+
+    let data_dir = state.data_dir.lock().unwrap().clone();
+    let img_dir = Path::new(&data_dir).join("ImgData");
+    if !img_dir.exists() {
+        fs::create_dir_all(&img_dir).map_err(|e| format!("创建 ImgData 目录失败: {}", e))?;
+    }
+
+    let target_path = img_dir.join(clean_filename);
+    fs::write(&target_path, &image_bytes).map_err(|e| format!("写入图片文件失败: {}", e))?;
+    Ok(())
 }
 
 #[tauri::command]

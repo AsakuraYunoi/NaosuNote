@@ -14,6 +14,9 @@ pub struct Notebook {
     pub name: String,
     pub subject: String,
     pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    #[serde(default)]
+    pub is_deleted: i32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -34,6 +37,8 @@ pub struct Problem {
     pub answer_images: Option<Vec<String>>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
+    #[serde(default)]
+    pub is_deleted: i32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -50,6 +55,9 @@ pub struct ProblemInput {
     pub tags: Option<Vec<String>>,
     pub answer_markdown: Option<String>,
     pub answer_images: Option<Vec<String>>,
+    pub updated_at: Option<String>,
+    #[serde(default)]
+    pub is_deleted: Option<i32>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

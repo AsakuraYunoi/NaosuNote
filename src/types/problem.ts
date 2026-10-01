@@ -3,6 +3,8 @@ export interface Notebook {
   name: string;
   subject: string;
   created_at?: string;
+  updated_at?: string;
+  is_deleted?: number;
 }
 
 export interface Problem {
@@ -21,6 +23,7 @@ export interface Problem {
   answer_images?: string[];
   created_at?: string;
   updated_at?: string;
+  is_deleted?: number;
 }
 
 export interface ProblemInput {
@@ -35,6 +38,8 @@ export interface ProblemInput {
   tags?: string[];
   answer_markdown?: string;
   answer_images?: string[];
+  updated_at?: string;
+  is_deleted?: number;
 }
 
 export interface TagCount {

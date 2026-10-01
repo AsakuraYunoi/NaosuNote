@@ -1022,8 +1022,15 @@ async function handleCloudSync() {
       const res = await apiSyncCloud((progressMsg) => {
         emit('notify', progressMsg);
       });
-      emit('notify', `云端同步完成！拉取 ${res.pulledProblems} 题，推送 ${res.pushedProblems} 题，上传 ${res.uploadedImages} 张图片`);
       await loadData();
+      const details = [];
+      if (res.pulledProblems > 0) details.push(`拉取 ${res.pulledProblems} 题`);
+      if (res.pushedProblems > 0) details.push(`推送 ${res.pushedProblems} 题`);
+      if (res.deletedProblems > 0) details.push(`清理已删 ${res.deletedProblems} 题`);
+      if (res.downloadedImages > 0) details.push(`下载图片 ${res.downloadedImages} 张`);
+      if (res.uploadedImages > 0) details.push(`上传图片 ${res.uploadedImages} 张`);
+      const syncMsg = details.length > 0 ? `云端同步完成！(${details.join('，')})` : '云端同步完成，数据已是最新';
+      emit('notify', syncMsg);
     } else {
       emit('notify', '正在刷新本地题库数据与镜像...');
       await Promise.all([loadData(), apiSyncAllMirrors()]);

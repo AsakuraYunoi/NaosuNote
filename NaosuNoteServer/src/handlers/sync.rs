@@ -43,11 +43,15 @@ pub async fn sync_push(
     let tags = req.tags.unwrap_or_default();
 
     match state.db.data.push_data(&auth_user.uuid, notebooks, problems, tags) {
-        Ok(applied) => {
+        Ok((applied_notebooks, applied_problems, applied_tags)) => {
+            let total_applied = applied_notebooks + applied_problems + applied_tags;
             Json(ApiResponse::ok_msg(
                 "增量更新已成功合并",
                 PushResponse {
-                    applied_count: applied,
+                    applied_count: total_applied,
+                    applied_problems,
+                    applied_notebooks,
+                    applied_tags,
                     server_timestamp: now_ms,
                 },
             ))

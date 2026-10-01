@@ -158,8 +158,15 @@ onMounted(async () => {
     isAutoSyncing.value = true;
     try {
       const res = await apiSyncCloud();
-      if (res.pulledProblems > 0 || res.pushedProblems > 0) {
-        showToast(`已自动完成云同步 (拉取${res.pulledProblems}题 / 推送${res.pushedProblems}题)`);
+      const hasChanges = res.pulledProblems > 0 || res.pushedProblems > 0 || res.downloadedImages > 0 || res.uploadedImages > 0 || res.deletedProblems > 0;
+      if (hasChanges) {
+        const details: string[] = [];
+        if (res.pulledProblems > 0) details.push(`拉取${res.pulledProblems}题`);
+        if (res.pushedProblems > 0) details.push(`推送${res.pushedProblems}题`);
+        if (res.downloadedImages > 0) details.push(`下载${res.downloadedImages}图`);
+        if (res.uploadedImages > 0) details.push(`上传${res.uploadedImages}图`);
+        if (res.deletedProblems > 0) details.push(`删除${res.deletedProblems}题`);
+        showToast(`已自动完成云同步 (${details.join(' / ')})`);
       }
     } catch (err) {
       console.warn('Auto cloud sync failed:', err);
