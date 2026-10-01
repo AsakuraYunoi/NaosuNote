@@ -1,7 +1,7 @@
 <template>
   <div class="settings-view">
     <div class="settings-container">
-      <div class="settings-header">
+      <div class="settings-header" data-tauri-drag-region="deep">
         <h2 class="view-title">系统设置</h2>
       </div>
 
@@ -60,23 +60,40 @@
 
         <div class="dir-path-box">
           <span class="dir-path">{{ currentDataDir || '读取中...' }}</span>
-          <button class="btn-outlined" @click="handleSelectDir">
-            <FolderOpen :size="16" />
-            <span>更改目录</span>
-          </button>
+          <div class="dir-actions">
+            <button class="btn-outlined" @click="handleOpenDir" title="在访达中打开保存目录">
+              <ExternalLink :size="16" />
+              <span>打开文件夹</span>
+            </button>
+            <button class="btn-outlined" @click="handleSelectDir">
+              <FolderOpen :size="16" />
+              <span>更改目录</span>
+            </button>
+          </div>
         </div>
       </div>
 
       <!-- User Notebooks Mirrors Card -->
       <div class="m3-card">
-        <div class="card-icon-title">
-          <div class="icon-circle icon-html">
-            <FileCode :size="22" />
+        <div class="card-header-bar">
+          <div class="card-icon-title">
+            <div class="icon-circle icon-html">
+              <FileCode :size="22" />
+            </div>
+            <div class="title-meta">
+              <h3>已建错题本</h3>
+              <p>每个错题本均自动同步为单文件 HTML，内嵌所有 LaTeX 公式、表格与 SVG 图，可在任意电脑离线双击打开</p>
+            </div>
           </div>
-          <div class="title-meta">
-            <h3>已建错题本</h3>
-            <p>每个错题本均自动同步为单文件 HTML，内嵌所有 LaTeX 公式、表格与 SVG 图，可在任意电脑离线双击打开</p>
-          </div>
+          <button
+            class="btn-outlined btn-sm sync-mirrors-btn"
+            @click="handleSyncMirrors"
+            :disabled="isSyncing"
+            title="重新生成所有错题本 HTML 镜像，清理注释并重排 KaTeX 公式"
+          >
+            <RefreshCw :size="14" :class="{ 'spin-anim': isSyncing }" />
+            <span>{{ isSyncing ? '同步中...' : '立即同步 HTML 镜像' }}</span>
+          </button>
         </div>
 
         <div v-if="notebooks.length === 0" class="empty-hint">
@@ -129,17 +146,7 @@
       <div class="m3-card about-card">
         <div class="about-brand">
           <div class="brand-logo-mark-sm">
-            <svg viewBox="0 0 40 40" class="logo-svg-sm" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect width="40" height="40" rx="12" fill="url(#brand-grad-settings)"/>
-              <path d="M12 11H25C26.6569 11 28 12.3431 28 14V27C28 28.6569 26.6569 30 25 30H12V11Z" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
-              <path d="M17 18L21 22L30 13" stroke="#9ecaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
-              <defs>
-                <linearGradient id="brand-grad-settings" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-                  <stop stop-color="#00639b"/>
-                  <stop offset="1" stop-color="#003757"/>
-                </linearGradient>
-              </defs>
-            </svg>
+            <img src="/favicon.svg" alt="NaosuNote" class="logo-svg-sm" draggable="false" />
           </div>
           <div>
             <h4>NaosuNote</h4>
@@ -214,6 +221,8 @@ import type { Notebook } from '../types/problem';
 import {
   apiGetDataDir,
   apiSelectDataDir,
+  apiOpenDataDir,
+  apiSyncAllMirrors,
   apiGetNotebooks,
   apiRenameNotebook,
   apiExportNotebookHtml,
@@ -232,6 +241,8 @@ import {
   Sun,
   Moon,
   Laptop,
+  ExternalLink,
+  RefreshCw,
 } from 'lucide-vue-next';
 import { isDark, setTheme, type ThemeMode } from '../utils/theme';
 
@@ -244,6 +255,7 @@ const notebooks = ref<Notebook[]>([]);
 const nbToDelete = ref<Notebook | null>(null);
 const nbToRename = ref<Notebook | null>(null);
 const renameInput = ref('');
+const isSyncing = ref(false);
 
 const currentThemeMode = ref<ThemeMode>(
   (localStorage.getItem('naosu_theme') as ThemeMode) || 'system'
@@ -254,12 +266,37 @@ function selectThemeMode(mode: ThemeMode) {
   setTheme(mode);
 }
 
+onMounted(() => {
+  loadData();
+});
+
 async function loadData() {
   try {
     currentDataDir.value = await apiGetDataDir();
     notebooks.value = await apiGetNotebooks();
   } catch (e) {
     console.error(e);
+  }
+}
+
+async function handleOpenDir() {
+  try {
+    await apiOpenDataDir();
+  } catch (e: any) {
+    emit('notify', '打开保存目录失败: ' + (e?.message || e));
+  }
+}
+
+async function handleSyncMirrors() {
+  if (isSyncing.value) return;
+  isSyncing.value = true;
+  try {
+    await apiSyncAllMirrors();
+    emit('notify', '已成功重新生成并同步所有错题本 HTML 镜像文件');
+  } catch (e: any) {
+    emit('notify', '同步失败: ' + (e?.message || e));
+  } finally {
+    isSyncing.value = false;
   }
 }
 
@@ -361,6 +398,8 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  -webkit-app-region: drag;
+  user-select: none;
 }
 
 .view-title {
@@ -473,6 +512,25 @@ onMounted(() => {
   white-space: nowrap;
 }
 
+.dir-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.card-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 16px;
+}
+
+.sync-mirrors-btn {
+  white-space: nowrap;
+}
+
 .btn-outlined {
   display: flex;
   align-items: center;
@@ -485,9 +543,29 @@ onMounted(() => {
   color: var(--md-sys-color-primary);
   background: var(--md-sys-color-surface-container-lowest);
   flex-shrink: 0;
+  cursor: pointer;
+  transition: all 0.2s;
 }
 .btn-outlined:hover {
   background: var(--md-sys-color-surface-container);
+}
+.btn-outlined:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-sm {
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.spin-anim {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .notebook-export-grid {
@@ -618,6 +696,8 @@ onMounted(() => {
 .logo-svg-sm {
   width: 38px;
   height: 38px;
+  display: block;
+  object-fit: contain;
 }
 
 .about-brand h4 {

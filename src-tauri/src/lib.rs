@@ -29,6 +29,8 @@ pub fn run() {
         .plugin(tauri_plugin_log::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             get_data_dir,
+            get_data_size,
+            get_device_info,
             select_data_dir,
             get_notebooks,
             create_notebook,
@@ -47,9 +49,26 @@ pub fn run() {
             delete_problem,
             get_tags,
             update_problem_tags,
+            update_problem_content,
             backup_database,
             open_paper_in_browser,
-            export_pdf_direct
+            export_pdf_direct,
+            open_data_dir,
+            open_url,
+            sync_all_mirrors,
+            save_answer_image,
+            delete_answer_image,
+            read_answer_image,
+            update_problem_answer,
+            create_tag,
+            rename_tag,
+            delete_tag,
+            export_answer_image,
+            save_binary_file_with_dialog,
+            save_text_file_with_dialog,
+            show_in_folder,
+            export_problem_image,
+            start_window_drag
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

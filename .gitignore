@@ -1,5 +1,7 @@
 # Dependencies
 node_modules/
+.pnpm-store/
+NaosuNoteServer/data/
 
 # Production builds
 dist/
@@ -8,7 +10,14 @@ release-portable/
 release-macos/
 
 # Tauri & Rust build artifacts
+target/
+**/target/
 src-tauri/target/
+NaosuNoteServer/target/
+NaosuNoteServer/uploads/
+NaosuNoteServer/logs/
+NaosuNoteServer/*.db
+NaosuNoteServer/*.sqlite
 platforms/macos/bin/
 
 # OS metadata

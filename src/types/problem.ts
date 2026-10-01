@@ -17,6 +17,8 @@ export interface Problem {
   difficulty: number;
   importance: number;
   tags?: string[];
+  answer_markdown?: string;
+  answer_images?: string[];
   created_at?: string;
   updated_at?: string;
 }
@@ -31,6 +33,8 @@ export interface ProblemInput {
   raw_html: string;
   stem_clean_text: string;
   tags?: string[];
+  answer_markdown?: string;
+  answer_images?: string[];
 }
 
 export interface TagCount {
@@ -72,5 +76,112 @@ export interface PaperConfig {
   showDate: boolean;
   showSubjectHeader: boolean;
   showPageNumber: boolean;
+  customProblemSpacings?: Record<string, number>;
 }
+
+// --- 题目可视化画布构件模型 (Canvas Block Models) ---
+
+export type CanvasBlockType =
+  | 'lead_text'
+  | 'svg_img'
+  | 'table'
+  | 'sub_item'
+  | 'options'
+  | 'row_group';
+
+export interface BaseCanvasBlock {
+  id: string;
+  type: CanvasBlockType;
+}
+
+export interface LeadTextBlock extends BaseCanvasBlock {
+  type: 'lead_text';
+  contentHtml: string; // 支持行内公式与填空横线
+}
+
+export interface SvgImgBlock extends BaseCanvasBlock {
+  type: 'svg_img';
+  svgContent: string; // 原生 <svg> 代码
+  nominalWidth?: number;
+  nominalHeight?: number;
+  aspectRatio?: number;
+}
+
+export interface TableBlock extends BaseCanvasBlock {
+  type: 'table';
+  tableHtml: string; // <table ...> 代码
+  nominalWidth?: number;
+}
+
+export interface OptionItem {
+  label: string; // A, B, C, D
+  textHtml: string;
+}
+
+export interface OptionsBlock extends BaseCanvasBlock {
+  type: 'options';
+  options: OptionItem[];
+  columnLayout?: 'auto' | '1-col' | '2-col' | '4-col';
+}
+
+export interface SubItemBlock extends BaseCanvasBlock {
+  type: 'sub_item';
+  indexLabel: string; // 如 "(1)", "(2)"
+  contentHtml: string;
+  subBlocks?: (SvgImgBlock | TableBlock | OptionsBlock)[];
+}
+
+export interface RowGroupBlock extends BaseCanvasBlock {
+  type: 'row_group';
+  children: (SvgImgBlock | TableBlock)[];
+}
+
+export type CanvasBlock =
+  | LeadTextBlock
+  | SvgImgBlock
+  | TableBlock
+  | OptionsBlock
+  | SubItemBlock
+  | RowGroupBlock;
+
+export interface ProblemCanvasDoc {
+  uuid: string;
+  subject: string;
+  problemType: string;
+  date: string;
+  summary: string;
+  blocks: CanvasBlock[];
+}
+
+// --- Device & Cloud Sync Types ---
+
+export interface DeviceInfo {
+  platform: 'desktop' | 'mobile';
+  form_factor: 'desktop' | 'pad' | 'phone';
+  os: string;
+  screen_width_dp: number;
+}
+
+export interface UserProfile {
+  uuid: string;
+  identifier: string;
+  nickname: string;
+  avatar_url?: string;
+  quota_bytes: number;
+  created_at: string;
+}
+
+export interface ProfileSummary {
+  uuid: string;
+  nickname: string;
+  identifier: string;
+  avatar_url?: string;
+  used_storage_bytes: number;
+  max_quota_bytes: number;
+  cloud_problem_count: number;
+  cloud_notebook_count: number;
+  last_sync_timestamp: number;
+}
+
+
 

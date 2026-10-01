@@ -1,6 +1,6 @@
 {
   "name": "naosunote",
-  "version": "0.1.0-beta",
+  "version": "0.2.0-beta-v1",
   "description": "",
   "main": "index.js",
   "type": "module",
@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "icon": "tauri icon src-tauri/app-icon.svg",
     "package:macos": "bash platforms/macos/scripts/package-app.sh",
     "package:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File platforms/windows/scripts/package-portable.ps1"
   },

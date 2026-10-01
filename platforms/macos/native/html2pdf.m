@@ -35,6 +35,15 @@
         if (@available(macOS 11.0, *)) {
             // Introspect exact paper dimensions and explicit .exam-page count from DOM
             NSString *dimScript = @"(function() {"
+                                   "  var target = document.querySelector('.problem-paper-sheet, .export-card, .problem-export-card, .problem-card');"
+                                   "  if (target) {"
+                                   "    var rect = target.getBoundingClientRect();"
+                                   "    var w = Math.round(rect.width || target.offsetWidth || 880);"
+                                   "    var h = Math.round(rect.height || target.scrollHeight || 400);"
+                                   "    var x = Math.round(rect.left || 0);"
+                                   "    var y = Math.round(rect.top || 0);"
+                                   "    return { width: w, pageHeight: h, totalHeight: h, pageCount: 1, x: x, y: y };"
+                                   "  }"
                                    "  var pages = document.querySelectorAll('.exam-page');"
                                    "  var b = document.body;"
                                    "  var d = document.documentElement;"
@@ -43,13 +52,15 @@
                                    "  var pageH = Math.round(minH > 0 ? minH : 1123);"
                                    "  var scrollH = Math.max(b.scrollHeight, d.scrollHeight, pageH);"
                                    "  var count = pages.length > 0 ? pages.length : Math.max(1, Math.ceil(scrollH / pageH));"
-                                   "  return { width: w, pageHeight: pageH, totalHeight: count * pageH, pageCount: count };"
+                                   "  return { width: w, pageHeight: pageH, totalHeight: count * pageH, pageCount: count, x: 0, y: 0 };"
                                    "})()";
             
             [self.webView evaluateJavaScript:dimScript completionHandler:^(id result, NSError *jsError) {
                 CGFloat targetW = self.fallbackWidth;
                 CGFloat pageH = self.fallbackHeight;
                 CGFloat totalH = pageH;
+                CGFloat targetX = 0;
+                CGFloat targetY = 0;
                 int pageCount = 1;
                 
                 if ([result isKindOfClass:[NSDictionary class]]) {
@@ -58,6 +69,8 @@
                     if (dict[@"pageHeight"]) pageH = [dict[@"pageHeight"] doubleValue];
                     if (dict[@"totalHeight"]) totalH = [dict[@"totalHeight"] doubleValue];
                     if (dict[@"pageCount"]) pageCount = [dict[@"pageCount"] intValue];
+                    if (dict[@"x"]) targetX = [dict[@"x"] doubleValue];
+                    if (dict[@"y"]) targetY = [dict[@"y"] doubleValue];
                 }
                 
                 if (pageCount < 1) {
@@ -66,8 +79,34 @@
                 if (pageCount < 1) pageCount = 1;
                 
                 // Adjust webView frame to cover full content length
-                self.webView.frame = NSMakeRect(0, 0, targetW, pageCount * pageH);
+                self.webView.frame = NSMakeRect(0, 0, targetW + targetX, pageCount * pageH + targetY);
                 
+                BOOL isPng = [self.outputPath.lowercaseString hasSuffix:@".png"];
+                if (isPng) {
+                    WKSnapshotConfiguration *snapConfig = [[WKSnapshotConfiguration alloc] init];
+                    snapConfig.rect = NSMakeRect(targetX, targetY, targetW, totalH);
+                    snapConfig.snapshotWidth = @(targetW * 2.0);
+                    
+                    [self.webView takeSnapshotWithConfiguration:snapConfig completionHandler:^(NSImage *snapshotImage, NSError *error) {
+                        if (error || !snapshotImage) {
+                            fprintf(stderr, "Snapshot Error: %s\n", error.localizedDescription.UTF8String);
+                            exit(1);
+                        }
+                        NSData *tiffData = [snapshotImage TIFFRepresentation];
+                        NSBitmapImageRep *rep = [NSBitmapImageRep imageRepWithData:tiffData];
+                        NSData *pngData = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+                        BOOL success = [pngData writeToFile:self.outputPath atomically:YES];
+                        if (success) {
+                            printf("SUCCESS: %s\n", self.outputPath.UTF8String);
+                            exit(0);
+                        } else {
+                            fprintf(stderr, "Failed to write PNG file to destination\n");
+                            exit(2);
+                        }
+                    }];
+                    return;
+                }
+
                 if (pageCount == 1) {
                     // Single page: capture exact single page
                     WKPDFConfiguration *pdfConfig = [[WKPDFConfiguration alloc] init];

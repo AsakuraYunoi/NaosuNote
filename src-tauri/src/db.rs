@@ -56,9 +56,20 @@ impl DbManager {
             [],
         )?;
 
+        // 3. 标签独立表
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS tags (
+                name TEXT PRIMARY KEY,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );",
+            [],
+        )?;
+
         // 容错：旧表可能没有 notebook_id 列或 tags 列，尝试添加
         let _ = conn.execute("ALTER TABLE problems ADD COLUMN notebook_id TEXT;", []);
         let _ = conn.execute("ALTER TABLE problems ADD COLUMN tags TEXT DEFAULT '[]';", []);
+        let _ = conn.execute("ALTER TABLE problems ADD COLUMN answer_markdown TEXT DEFAULT '';", []);
+        let _ = conn.execute("ALTER TABLE problems ADD COLUMN answer_images TEXT DEFAULT '[]';", []);
 
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_subject ON problems(subject);",
@@ -117,6 +128,35 @@ impl DbManager {
                AND EXISTS (SELECT 1 FROM notebooks WHERE notebooks.subject = problems.subject);",
             [],
         );
+
+        // 清理数据库中历史遗留的 raw_html 顶部注释，确保数据库存储纯净的 <div class="naosu-problem">
+        if let Ok(mut stmt) = conn.prepare("SELECT uuid, raw_html FROM problems WHERE raw_html LIKE '<!--%'") {
+            if let Ok(rows) = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            }) {
+                let mut to_update = Vec::new();
+                for r in rows.flatten() {
+                    let (uuid, raw) = r;
+                    let mut clean = raw.trim().to_string();
+                    while clean.starts_with("<!--") {
+                        if let Some(pos) = clean.find("-->") {
+                            clean = clean[pos + 3..].trim().to_string();
+                        } else {
+                            break;
+                        }
+                    }
+                    if clean != raw {
+                        to_update.push((uuid, clean));
+                    }
+                }
+                for (uuid, clean) in to_update {
+                    let _ = conn.execute(
+                        "UPDATE problems SET raw_html = ?1 WHERE uuid = ?2",
+                        params![clean, uuid],
+                    );
+                }
+            }
+        }
 
         Ok(())
     }
@@ -204,9 +244,11 @@ impl DbManager {
         tags: Option<Vec<String>>,
         search: Option<String>,
         sort_by: Option<String>,
+        start_date: Option<String>,
+        end_date: Option<String>,
     ) -> Result<Vec<Problem>> {
         let conn = self.get_connection()?;
-        let mut query = "SELECT uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, created_at, updated_at FROM problems WHERE 1=1".to_string();
+        let mut query = "SELECT uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, answer_markdown, answer_images, created_at, updated_at FROM problems WHERE 1=1".to_string();
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
         if let Some(nid) = notebook_id {
@@ -227,6 +269,22 @@ impl DbManager {
             if !ptype.is_empty() && ptype != "全部" {
                 query.push_str(" AND type = ?");
                 params_vec.push(Box::new(ptype));
+            }
+        }
+
+        if let Some(s_date) = start_date {
+            let normalized = s_date.replace('-', "").trim().to_string();
+            if !normalized.is_empty() {
+                query.push_str(" AND substr(replace(date, '-', ''), 1, 8) >= ?");
+                params_vec.push(Box::new(normalized));
+            }
+        }
+
+        if let Some(e_date) = end_date {
+            let normalized = e_date.replace('-', "").trim().to_string();
+            if !normalized.is_empty() {
+                query.push_str(" AND substr(replace(date, '-', ''), 1, 8) <= ?");
+                params_vec.push(Box::new(normalized));
             }
         }
 
@@ -273,6 +331,8 @@ impl DbManager {
         let problem_iter = stmt.query_map(param_refs.as_slice(), |row| {
             let tags_json: Option<String> = row.get(10)?;
             let tags_vec = tags_json.and_then(|s| serde_json::from_str(&s).ok());
+            let img_json: Option<String> = row.get(12)?;
+            let img_vec = img_json.and_then(|s| serde_json::from_str(&s).ok());
             Ok(Problem {
                 uuid: row.get(0)?,
                 notebook_id: row.get(1)?,
@@ -285,8 +345,10 @@ impl DbManager {
                 difficulty: row.get(8)?,
                 importance: row.get(9)?,
                 tags: tags_vec,
-                created_at: row.get(11)?,
-                updated_at: row.get(12)?,
+                answer_markdown: row.get(11)?,
+                answer_images: img_vec,
+                created_at: row.get(13)?,
+                updated_at: row.get(14)?,
             })
         })?;
 
@@ -300,12 +362,14 @@ impl DbManager {
     pub fn get_problem_by_uuid(&self, uuid: &str) -> Result<Option<Problem>> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, created_at, updated_at FROM problems WHERE uuid = ?1",
+            "SELECT uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, answer_markdown, answer_images, created_at, updated_at FROM problems WHERE uuid = ?1",
         )?;
         let mut rows = stmt.query(params![uuid])?;
         if let Some(row) = rows.next()? {
             let tags_json: Option<String> = row.get(10)?;
             let tags_vec = tags_json.and_then(|s| serde_json::from_str(&s).ok());
+            let img_json: Option<String> = row.get(12)?;
+            let img_vec = img_json.and_then(|s| serde_json::from_str(&s).ok());
             Ok(Some(Problem {
                 uuid: row.get(0)?,
                 notebook_id: row.get(1)?,
@@ -318,8 +382,10 @@ impl DbManager {
                 difficulty: row.get(8)?,
                 importance: row.get(9)?,
                 tags: tags_vec,
-                created_at: row.get(11)?,
-                updated_at: row.get(12)?,
+                answer_markdown: row.get(11)?,
+                answer_images: img_vec,
+                created_at: row.get(13)?,
+                updated_at: row.get(14)?,
             }))
         } else {
             Ok(None)
@@ -329,9 +395,10 @@ impl DbManager {
     pub fn insert_problem(&self, problem: &Problem) -> Result<()> {
         let conn = self.get_connection()?;
         let tags_json = serde_json::to_string(&problem.tags.clone().unwrap_or_default()).unwrap_or_else(|_| "[]".to_string());
+        let answer_images_json = serde_json::to_string(&problem.answer_images.clone().unwrap_or_default()).unwrap_or_else(|_| "[]".to_string());
         conn.execute(
-            "INSERT INTO problems (uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            "INSERT INTO problems (uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, answer_markdown, answer_images, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
              ON CONFLICT(uuid) DO UPDATE SET
                 notebook_id = excluded.notebook_id,
                 subject = excluded.subject,
@@ -341,6 +408,8 @@ impl DbManager {
                 raw_html = excluded.raw_html,
                 stem_clean_text = excluded.stem_clean_text,
                 tags = excluded.tags,
+                answer_markdown = excluded.answer_markdown,
+                answer_images = excluded.answer_images,
                 updated_at = CURRENT_TIMESTAMP;",
             params![
                 problem.uuid,
@@ -353,7 +422,9 @@ impl DbManager {
                 problem.stem_clean_text,
                 problem.difficulty,
                 problem.importance,
-                tags_json
+                tags_json,
+                problem.answer_markdown.clone().unwrap_or_default(),
+                answer_images_json
             ],
         )?;
         Ok(())
@@ -407,6 +478,46 @@ impl DbManager {
         Ok(())
     }
 
+    pub fn update_problem_content(
+        &self,
+        uuid: &str,
+        raw_html: &str,
+        stem_clean_text: &str,
+        summary: &str,
+        problem_type: &str,
+    ) -> Result<()> {
+        let mut clean_html = raw_html.trim().to_string();
+        while clean_html.starts_with("<!--") {
+            if let Some(pos) = clean_html.find("-->") {
+                clean_html = clean_html[pos + 3..].trim().to_string();
+            } else {
+                break;
+            }
+        }
+
+        let conn = self.get_connection()?;
+        conn.execute(
+            "UPDATE problems SET raw_html = ?1, stem_clean_text = ?2, summary = ?3, type = ?4, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?5",
+            params![clean_html, stem_clean_text, summary, problem_type, uuid],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_problem_answer(
+        &self,
+        uuid: &str,
+        answer_markdown: &str,
+        answer_images_json: &str,
+    ) -> Result<()> {
+        let conn = self.get_connection()?;
+        conn.execute(
+            "UPDATE problems SET answer_markdown = ?1, answer_images = ?2, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?3",
+            params![answer_markdown, answer_images_json, uuid],
+        )?;
+        Ok(())
+    }
+
+
     pub fn get_tags_by_scope(
         &self,
         subject: Option<&str>,
@@ -452,6 +563,18 @@ impl DbManager {
             }
         }
 
+        // 同时检索独立标签字典表（即使尚未关联错题，计数初始为0）
+        if let Ok(mut stmt_tags) = conn.prepare("SELECT name FROM tags") {
+            if let Ok(rows) = stmt_tags.query_map([], |row| row.get::<_, String>(0)) {
+                for r in rows.flatten() {
+                    let trimmed = r.trim().to_string();
+                    if !trimmed.is_empty() {
+                        counts.entry(trimmed).or_insert(0);
+                    }
+                }
+            }
+        }
+
         let mut result: Vec<crate::models::TagCount> = counts
             .into_iter()
             .map(|(name, count)| crate::models::TagCount { name, count })
@@ -470,12 +593,14 @@ impl DbManager {
     pub fn get_problems_by_notebook(&self, notebook_id: &str) -> Result<Vec<Problem>> {
         let conn = self.get_connection()?;
         let mut stmt = conn.prepare(
-            "SELECT uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, created_at, updated_at 
+            "SELECT uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, answer_markdown, answer_images, created_at, updated_at 
              FROM problems WHERE notebook_id = ?1 ORDER BY date DESC, created_at DESC",
         )?;
         let iter = stmt.query_map(params![notebook_id], |row| {
             let tags_json: Option<String> = row.get(10)?;
             let tags_vec = tags_json.and_then(|s| serde_json::from_str(&s).ok());
+            let img_json: Option<String> = row.get(12)?;
+            let img_vec = img_json.and_then(|s| serde_json::from_str(&s).ok());
             Ok(Problem {
                 uuid: row.get(0)?,
                 notebook_id: row.get(1)?,
@@ -488,8 +613,10 @@ impl DbManager {
                 difficulty: row.get(8)?,
                 importance: row.get(9)?,
                 tags: tags_vec,
-                created_at: row.get(11)?,
-                updated_at: row.get(12)?,
+                answer_markdown: row.get(11)?,
+                answer_images: img_vec,
+                created_at: row.get(13)?,
+                updated_at: row.get(14)?,
             })
         })?;
 
@@ -540,12 +667,14 @@ impl DbManager {
         for old_uuid in uuids {
             let p_opt: Option<Problem> = {
                 let mut stmt = tx.prepare(
-                    "SELECT uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, created_at, updated_at 
+                    "SELECT uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, answer_markdown, answer_images, created_at, updated_at 
                      FROM problems WHERE uuid = ?1",
                 )?;
                 let mut rows = stmt.query_map(params![old_uuid], |row| {
                     let tags_json: Option<String> = row.get(10)?;
                     let tags_vec = tags_json.and_then(|s| serde_json::from_str(&s).ok());
+                    let img_json: Option<String> = row.get(12)?;
+                    let img_vec = img_json.and_then(|s| serde_json::from_str(&s).ok());
                     Ok(Problem {
                         uuid: row.get(0)?,
                         notebook_id: row.get(1)?,
@@ -558,8 +687,10 @@ impl DbManager {
                         difficulty: row.get(8)?,
                         importance: row.get(9)?,
                         tags: tags_vec,
-                        created_at: row.get(11)?,
-                        updated_at: row.get(12)?,
+                        answer_markdown: row.get(11)?,
+                        answer_images: img_vec,
+                        created_at: row.get(13)?,
+                        updated_at: row.get(14)?,
                     })
                 })?;
                 if let Some(r) = rows.next() {
@@ -576,9 +707,11 @@ impl DbManager {
                 p.subject = target_subject.to_string();
                 let tags_json = serde_json::to_string(&p.tags.clone().unwrap_or_default())
                     .unwrap_or_else(|_| "[]".to_string());
+                let answer_images_json = serde_json::to_string(&p.answer_images.clone().unwrap_or_default())
+                    .unwrap_or_else(|_| "[]".to_string());
                 tx.execute(
-                    "INSERT INTO problems (uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                    "INSERT INTO problems (uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, answer_markdown, answer_images)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                     params![
                         p.uuid,
                         p.notebook_id,
@@ -591,6 +724,8 @@ impl DbManager {
                         p.difficulty,
                         p.importance,
                         tags_json,
+                        p.answer_markdown.clone().unwrap_or_default(),
+                        answer_images_json
                     ],
                 )?;
                 copied.push(p);
@@ -646,5 +781,119 @@ impl DbManager {
         }
         tx.commit()?;
         Ok(updated)
+    }
+
+    pub fn create_tag(&self, name: &str) -> Result<()> {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            return Ok(());
+        }
+        let conn = self.get_connection()?;
+        conn.execute(
+            "INSERT OR IGNORE INTO tags (name) VALUES (?1)",
+            params![trimmed],
+        )?;
+        Ok(())
+    }
+
+    pub fn rename_tag(&self, old_name: &str, new_name: &str) -> Result<usize> {
+        let old_trimmed = old_name.trim();
+        let new_trimmed = new_name.trim();
+        if old_trimmed.is_empty() || new_trimmed.is_empty() {
+            return Ok(0);
+        }
+        let mut conn = self.get_connection()?;
+        let tx = conn.transaction()?;
+
+        // 1. 更新 tags 字典表
+        let _ = tx.execute("INSERT OR IGNORE INTO tags (name) VALUES (?1)", params![new_trimmed]);
+        let _ = tx.execute("DELETE FROM tags WHERE name = ?1", params![old_trimmed]);
+
+        // 2. 更新包含旧标签的所有错题
+        let mut to_update: Vec<(String, String)> = Vec::new();
+        {
+            let mut stmt = tx.prepare("SELECT uuid, tags FROM problems WHERE tags LIKE ?1")?;
+            let rows = stmt.query_map(params![format!("%\"{}\"%", old_trimmed)], |r| {
+                let uuid: String = r.get(0)?;
+                let tags_json: Option<String> = r.get(1)?;
+                Ok((uuid, tags_json))
+            })?;
+
+            for r in rows {
+                if let Ok((uuid, Some(json_str))) = r {
+                    if let Ok(mut tags) = serde_json::from_str::<Vec<String>>(&json_str) {
+                        let mut changed = false;
+                        for t in &mut tags {
+                            if t == old_trimmed {
+                                *t = new_trimmed.to_string();
+                                changed = true;
+                            }
+                        }
+                        if changed {
+                            tags.sort();
+                            tags.dedup();
+                            let new_json = serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string());
+                            to_update.push((uuid, new_json));
+                        }
+                    }
+                }
+            }
+        }
+
+        let updated_count = to_update.len();
+        for (uuid, new_json) in to_update {
+            tx.execute(
+                "UPDATE problems SET tags = ?1, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?2",
+                params![new_json, uuid],
+            )?;
+        }
+        tx.commit()?;
+        Ok(updated_count)
+    }
+
+    pub fn delete_tag(&self, name: &str) -> Result<usize> {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            return Ok(0);
+        }
+        let mut conn = self.get_connection()?;
+        let tx = conn.transaction()?;
+
+        // 1. 从 tags 字典表删除
+        let _ = tx.execute("DELETE FROM tags WHERE name = ?1", params![trimmed]);
+
+        // 2. 从所有关联错题中剔除
+        let mut to_update: Vec<(String, String)> = Vec::new();
+        {
+            let mut stmt = tx.prepare("SELECT uuid, tags FROM problems WHERE tags LIKE ?1")?;
+            let rows = stmt.query_map(params![format!("%\"{}\"%", trimmed)], |r| {
+                let uuid: String = r.get(0)?;
+                let tags_json: Option<String> = r.get(1)?;
+                Ok((uuid, tags_json))
+            })?;
+
+            for r in rows {
+                if let Ok((uuid, Some(json_str))) = r {
+                    if let Ok(mut tags) = serde_json::from_str::<Vec<String>>(&json_str) {
+                        let orig_len = tags.len();
+                        tags.retain(|t| t != trimmed);
+                        if tags.len() != orig_len {
+                            let new_json = serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string());
+                            to_update.push((uuid, new_json));
+                        }
+                    }
+                }
+            }
+        }
+
+        let updated_count = to_update.len();
+        for (uuid, new_json) in to_update {
+            tx.execute(
+                "UPDATE problems SET tags = ?1, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?2",
+                params![new_json, uuid],
+            )?;
+        }
+        tx.commit()?;
+        Ok(updated_count)
     }
 }

@@ -2,7 +2,7 @@
   <div class="ingest-view">
     <div class="ingest-container">
       <!-- Header -->
-      <div class="ingest-header">
+      <div class="ingest-header" data-tauri-drag-region="deep">
         <div class="header-titles">
           <h2 class="view-title">录入标准格式错题</h2>
           <p class="view-subtitle">
@@ -142,7 +142,7 @@
             <!-- Render with LaTeX & SVG & Tables -->
             <div
               class="preview-body selectable"
-              v-html="renderLatexInHtml(item.raw_html)"
+              v-html="formatProblemForExam(item.raw_html)"
             ></div>
           </div>
         </div>
@@ -165,7 +165,7 @@
 import { ref, onMounted } from 'vue';
 import type { Notebook, Problem, ProblemInput, TagCount } from '../types/problem';
 import { parseProblemHtml } from '../utils/parser';
-import { renderLatexInHtml } from '../utils/katexRender';
+import { formatProblemForExam } from '../utils/examFormatter';
 import {
   apiGetNotebooks,
   apiCheckDuplicate,
@@ -416,6 +416,8 @@ onMounted(() => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+  -webkit-app-region: drag;
+  user-select: none;
 }
 
 .header-titles {
@@ -425,6 +427,7 @@ onMounted(() => {
 }
 
 .btn-copy-prompt {
+  -webkit-app-region: no-drag;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -661,6 +664,7 @@ onMounted(() => {
 .preview-body {
   font-size: 14px;
   line-height: 1.7;
+  container-type: inline-size;
 }
 
 .preview-tags-section {

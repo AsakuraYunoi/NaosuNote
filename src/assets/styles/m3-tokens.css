@@ -48,6 +48,11 @@
   --md-sys-color-outline: #79747e;
   --md-sys-color-outline-variant: #cac4d0;
 
+  /* M3 Inverse Colors (for Snackbars / Toasts) */
+  --md-sys-color-inverse-surface: #313033;
+  --md-sys-color-inverse-on-surface: #f4eff4;
+  --md-sys-color-inverse-primary: #9ecaff;
+
   /* Subject Badge Tonal Accents */
   --subject-math: #0b57d0;
   --subject-math-bg: #e8f0fe;
@@ -120,6 +125,11 @@
   /* Outlines & Borders - Dark */
   --md-sys-color-outline: #8d9199;
   --md-sys-color-outline-variant: #3a3d45;
+
+  /* M3 Inverse Colors - Dark */
+  --md-sys-color-inverse-surface: #e2e2e6;
+  --md-sys-color-inverse-on-surface: #2f3033;
+  --md-sys-color-inverse-primary: #00639b;
 
   /* Subject Badge Tonal Accents - Dark High Contrast */
   --subject-math: #a8c7fa;

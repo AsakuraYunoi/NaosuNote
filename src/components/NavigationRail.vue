@@ -1,20 +1,12 @@
 <template>
-  <nav class="m3-nav-rail">
+  <nav class="m3-nav-rail" data-tauri-drag-region="deep">
+    <!-- macOS Traffic Light Spacer & Window Drag Area -->
+    <div class="window-drag-region" data-tauri-drag-region="deep"></div>
+
     <!-- Brand -->
-    <div class="nav-brand">
+    <div class="nav-brand" data-tauri-drag-region="deep">
       <div class="brand-logo-mark">
-        <svg viewBox="0 0 40 40" class="logo-svg" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect width="40" height="40" rx="12" fill="url(#brand-grad)"/>
-          <!-- Modern Stylized STEM Mistake Note Path: folded notebook + sharp pen checkmark -->
-          <path d="M12 11H25C26.6569 11 28 12.3431 28 14V27C28 28.6569 26.6569 30 25 30H12V11Z" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
-          <path d="M17 18L21 22L30 13" stroke="#9ecaff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
-          <defs>
-            <linearGradient id="brand-grad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-              <stop stop-color="#00639b"/>
-              <stop offset="1" stop-color="#003757"/>
-            </linearGradient>
-          </defs>
-        </svg>
+        <img src="/favicon.svg" alt="NaosuNote" class="logo-svg" draggable="false" />
       </div>
       <span class="brand-title">NaosuNote</span>
     </div>
@@ -38,17 +30,18 @@
       </button>
     </div>
 
-    <!-- Footer Controls -->
+    <!-- Footer Controls: User Profile Avatar Entry Button -->
     <div class="nav-footer">
       <button
-        class="theme-toggle-btn"
-        :title="isDark ? '切换至浅色模式' : '切换至深色模式'"
-        @click="toggleTheme"
+        class="nav-avatar-btn"
+        :class="{ 'is-active': isProfileOpen }"
+        title="个人信息与数据总览"
+        aria-label="个人信息与数据总览"
+        @click="$emit('toggle-profile')"
       >
-        <Sun v-if="isDark" :size="18" class="theme-icon" />
-        <Moon v-else :size="18" class="theme-icon" />
+        <img :src="userAvatarUrl" alt="用户头像" class="nav-avatar-img" />
       </button>
-      <span class="version-tag">v0.1.0 beta</span>
+      <span class="version-tag">beta0.2.0-v1</span>
     </div>
   </nav>
 </template>
@@ -59,81 +52,95 @@ import {
   PlusCircle,
   Printer,
   Settings,
-  Sun,
-  Moon,
 } from 'lucide-vue-next';
-import { isDark, toggleTheme } from '../utils/theme';
+import { userAvatarUrl } from '../utils/avatar';
 
 defineProps<{
   currentTab: string;
   printCount: number;
+  isProfileOpen?: boolean;
 }>();
 
 defineEmits<{
   (e: 'update:currentTab', tab: string): void;
+  (e: 'toggle-profile'): void;
 }>();
 
 const navItems = [
   { id: 'library', label: '错题库', icon: BookOpen },
   { id: 'ingest', label: '录入错题', icon: PlusCircle },
   { id: 'print', label: '组卷打印', icon: Printer },
-  { id: 'settings', label: '设置备份', icon: Settings },
+  { id: 'settings', label: '设置', icon: Settings },
 ];
 </script>
 
 <style scoped>
 .m3-nav-rail {
-  width: 92px;
+  width: 81px;
   background-color: var(--md-sys-color-surface-container-low);
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 24px 0 16px 0;
+  padding: 0 0 16px 0;
   border-right: 1px solid var(--md-sys-color-outline-variant);
   flex-shrink: 0;
   z-index: 10;
+  -webkit-app-region: drag;
+  user-select: none;
   transition: background-color 0.25s ease, border-color 0.25s ease;
+}
+
+.window-drag-region {
+  width: 100%;
+  height: 52px;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
 }
 
 .nav-brand {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: 28px;
+  margin-bottom: 20px;
+  -webkit-app-region: drag;
 }
 
 .brand-logo-mark {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 6px;
-  filter: drop-shadow(0 2px 8px rgba(0, 99, 155, 0.25));
+  margin-bottom: 5px;
   transition: transform 0.2s ease;
+  -webkit-app-region: no-drag;
 }
 .brand-logo-mark:hover {
   transform: scale(1.05);
 }
 
 .logo-svg {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
+  display: block;
+  object-fit: contain;
 }
 
 .brand-title {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   color: var(--md-sys-color-primary);
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
+  -webkit-app-region: drag;
 }
 
 .nav-destinations {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   width: 100%;
   align-items: center;
+  -webkit-app-region: drag;
 }
 
 .nav-item {
@@ -142,12 +149,16 @@ const navItems = [
   align-items: center;
   gap: 4px;
   width: 100%;
-  padding: 4px 0;
+  padding: 3px 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .nav-pill {
-  width: 56px;
+  width: 52px;
   height: 32px;
   border-radius: var(--md-shape-corner-full);
   display: flex;
@@ -169,7 +180,7 @@ const navItems = [
 }
 
 .nav-label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--md-sys-color-on-surface-variant);
   transition: color 0.2s;
@@ -189,8 +200,8 @@ const navItems = [
   font-size: 10px;
   font-weight: 700;
   border-radius: 999px;
-  padding: 1px 6px;
-  min-width: 18px;
+  padding: 1px 5px;
+  min-width: 16px;
   text-align: center;
 }
 
@@ -199,28 +210,60 @@ const navItems = [
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  width: 100%;
+  -webkit-app-region: drag;
 }
 
-.theme-toggle-btn {
-  width: 38px;
-  height: 38px;
-  border-radius: var(--md-shape-corner-full);
+.nav-avatar-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 4px 0 0 0;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--md-sys-color-on-surface-variant);
-  background-color: var(--md-sys-color-surface-container-high);
-  transition: all 0.2s ease;
+  border-radius: 50%;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
+  position: relative;
 }
-.theme-toggle-btn:hover {
-  background-color: var(--md-sys-color-surface-container-highest);
-  color: var(--md-sys-color-primary);
-  transform: rotate(15deg);
+
+.nav-avatar-btn:hover {
+  transform: scale(1.08);
+}
+
+.nav-avatar-btn.is-active {
+  transform: scale(1.08);
+}
+
+.nav-avatar-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  transition: box-shadow 0.2s ease, outline 0.2s ease;
+}
+
+.nav-avatar-btn:hover .nav-avatar-img {
+  box-shadow: 0 3px 10px rgba(0, 99, 155, 0.3);
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 1.5px;
+}
+
+.nav-avatar-btn.is-active .nav-avatar-img {
+  outline: 2.5px solid var(--md-sys-color-primary);
+  outline-offset: 1.5px;
 }
 
 .version-tag {
-  font-size: 10px;
+  font-size: 9px;
   color: var(--md-sys-color-outline);
+  -webkit-app-region: drag;
+  margin-top: 2px;
 }
 </style>

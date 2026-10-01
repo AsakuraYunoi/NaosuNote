@@ -2,7 +2,7 @@
   <div class="print-view">
     <!-- Left Configuration Sidebar -->
     <aside class="print-sidebar no-print">
-      <div class="sidebar-header">
+      <div class="sidebar-header" data-tauri-drag-region="deep">
         <h3 class="sidebar-title">试卷排版与打印</h3>
         <span class="basket-count">已选 {{ printCart.length }} 题</span>
       </div>
@@ -138,7 +138,12 @@
               宽松
             </button>
           </div>
+          <div v-if="hasCustomSpacings" class="custom-spacing-reset-row" style="margin-top: 6px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 11px; color: var(--md-sys-color-primary);">已自定义单题留白</span>
+            <button type="button" class="btn-text-reset" style="background: none; border: none; font-size: 11px; color: var(--md-sys-color-primary); cursor: pointer; text-decoration: underline;" @click="resetAllCustomSpacings">重置所有留白</button>
+          </div>
         </div>
+
 
         <!-- Font Size Stepped Slider (7px to 15px, step 0.5px, default 10px) -->
         <div class="setting-group">
@@ -335,14 +340,24 @@
                       v-for="item in page.items"
                       :key="item.problem.uuid"
                       class="paper-problem-wrapper"
+                      :style="{ marginBottom: `${getProblemSpacing(item.problem.uuid)}px` }"
                     >
                       <!-- Problem Body with index number matching stem font size, KaTeX, SVG & Table -->
                       <div
                         class="problem-render-body selectable"
                         v-html="formatProblemForExam(item.problem.raw_html, item.index + 1)"
                       ></div>
+
+                      <!-- Interactive Answer Space Resizer Handle -->
+                      <AnswerSpaceHandle
+                        :space="getProblemSpacing(item.problem.uuid)"
+                        :remaining-page-height="getItemRemainingSpace(page, item.problem.uuid)"
+                        @update:space="setProblemSpacing(item.problem.uuid, $event)"
+                        @reset="resetProblemSpacing(item.problem.uuid)"
+                      />
                     </div>
                   </div>
+
                 </div>
 
                 <!-- Page Footer (第 X 页 / 共 Y 页) -->
@@ -392,6 +407,8 @@ import { formatProblemForExam } from '../utils/examFormatter';
 import { apiExportPdfDirect } from '../utils/api';
 import { FileDown, Plus, Minus, ArrowUp, ArrowDown, Trash2 } from 'lucide-vue-next';
 import katexCss from 'katex/dist/katex.min.css?raw';
+import AnswerSpaceHandle from '../components/canvas/AnswerSpaceHandle.vue';
+import { applyAdaptiveRowScaling, getAvailableContentWidthPx } from '../utils/printAdaptiveFitter';
 
 const props = defineProps<{
   printCart: Problem[];
@@ -421,7 +438,37 @@ const config = reactive<PaperConfig>({
   showDate: false,
   showSubjectHeader: false,
   showPageNumber: true, // 默认开启页码
+  customProblemSpacings: {},
 });
+
+const customSpacings = ref<Record<string, number>>({});
+
+function getProblemSpacing(uuid: string): number {
+  if (customSpacings.value[uuid] !== undefined) {
+    return customSpacings.value[uuid];
+  }
+  return currentProblemMarginBottom.value;
+}
+
+function setProblemSpacing(uuid: string, val: number) {
+  customSpacings.value[uuid] = Math.round(val);
+  config.customProblemSpacings = { ...customSpacings.value };
+  updateMeasuredHeights();
+}
+
+function resetProblemSpacing(uuid: string) {
+  delete customSpacings.value[uuid];
+  config.customProblemSpacings = { ...customSpacings.value };
+  updateMeasuredHeights();
+}
+
+const hasCustomSpacings = computed(() => Object.keys(customSpacings.value).length > 0);
+
+function resetAllCustomSpacings() {
+  customSpacings.value = {};
+  config.customProblemSpacings = {};
+  updateMeasuredHeights();
+}
 
 const currentLineHeight = computed(() => {
   switch (config.lineSpacing) {
@@ -476,6 +523,12 @@ interface PageData {
   pageNumber: number;
   items: PageItem[];
   isFirstPage: boolean;
+  remainingHeight: number;
+}
+
+function getItemRemainingSpace(page: PageData, uuid: string): number {
+  const currentSp = getProblemSpacing(uuid);
+  return Math.round(currentSp + (page.remainingHeight || 0));
 }
 
 const problemHeights = ref<Record<string, number>>({});
@@ -486,15 +539,29 @@ function updateMeasuredHeights() {
   if (!measureSandboxRef.value) return;
   const items = measureSandboxRef.value.querySelectorAll<HTMLElement>('.measure-item');
   const heights: Record<string, number> = {};
-  const mb = currentProblemMarginBottom.value;
   items.forEach((el) => {
     const uuid = el.getAttribute('data-uuid');
     if (uuid) {
+      const mb = customSpacings.value[uuid] !== undefined
+        ? customSpacings.value[uuid]
+        : currentProblemMarginBottom.value;
       heights[uuid] = el.offsetHeight + mb;
     }
   });
   problemHeights.value = heights;
+
+  nextTick(() => {
+    if (previewAreaRef.value) {
+      const metrics = {
+        paperWidthMm: config.paperSize === 'B5' ? 176 : 210,
+        paddingMm: config.margin === 'compact' ? 12 : config.margin === 'spacious' ? 18 : 15,
+      };
+      const availPx = getAvailableContentWidthPx(metrics);
+      applyAdaptiveRowScaling(previewAreaRef.value, availPx);
+    }
+  });
 }
+
 
 watch(
   () => [
@@ -674,6 +741,7 @@ const paginatedPages = computed<PageData[]>(() => {
         pageNumber: pages.length + 1,
         items: currentItems,
         isFirstPage: pages.length === 0,
+        remainingHeight: Math.max(0, maxAllowed - currentHeight),
       });
       currentItems = [];
       currentHeight = 0;
@@ -684,10 +752,12 @@ const paginatedPages = computed<PageData[]>(() => {
   }
 
   if (currentItems.length > 0) {
+    const maxAllowed = pages.length === 0 ? maxH_first : maxH_other;
     pages.push({
       pageNumber: pages.length + 1,
       items: currentItems,
       isFirstPage: pages.length === 0,
+      remainingHeight: Math.max(0, maxAllowed - currentHeight),
     });
   }
 
@@ -717,11 +787,16 @@ function generateFullPrintHtml(): string {
       </div>
     ` : '';
 
-    const problemsHtml = page.items.map((item) => `
-      <div class="paper-problem-wrapper">
+    const problemsHtml = page.items.map((item) => {
+      const mb = customSpacings.value[item.problem.uuid] !== undefined
+        ? `${customSpacings.value[item.problem.uuid]}px`
+        : problemMarginBottom;
+      return `
+      <div class="paper-problem-wrapper" style="margin-bottom: ${mb};">
         ${formatProblemForExam(item.problem.raw_html, item.index + 1)}
       </div>
-    `).join('\n');
+    `;
+    }).join('\n');
 
     const footerHtml = config.showPageNumber ? `
       <div class="paper-page-footer">
@@ -741,6 +816,7 @@ function generateFullPrintHtml(): string {
       </div>
     `;
   }).join('\n');
+
 
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -869,22 +945,44 @@ function generateFullPrintHtml(): string {
     .blank-xl { width: 210px; }
     .options {
       margin: 6px 0;
-      padding-left: 6px;
-    }
-    .options-grid.options-4-col {
+      padding-left: 4px;
       display: grid !important;
-      grid-template-columns: repeat(4, 1fr) !important;
-      gap: 4px 12px !important;
-    }
-    .options-grid.options-2-col {
-      display: grid !important;
-      grid-template-columns: repeat(2, 1fr) !important;
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
       gap: 4px 16px !important;
+      align-items: baseline;
     }
-    .options-grid.options-1-col {
+    .options-grid.options-4-col,
+    .options.options-4-col {
+      display: flex !important;
+      flex-direction: row !important;
+      flex-wrap: nowrap !important;
+      align-items: baseline !important;
+      column-gap: 28px !important;
+      row-gap: 4px !important;
+    }
+    .options-grid.options-2-col,
+    .options.options-2-col {
+      display: grid !important;
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      gap: 4px 16px !important;
+      align-items: baseline;
+    }
+    .options-grid.options-1-col,
+    .options.options-1-col {
       display: grid !important;
       grid-template-columns: 1fr !important;
       gap: 4px !important;
+      align-items: baseline;
+    }
+    .options-4-col > span {
+      white-space: nowrap !important;
+      flex: 0 0 auto !important;
+    }
+    .options > span {
+      display: block;
+      box-sizing: border-box;
+      min-width: 0;
+      word-break: break-word;
     }
     table {
       width: 96%;
@@ -902,12 +1000,56 @@ function generateFullPrintHtml(): string {
     th { padding: 3px 6px; font-weight: bold; }
     td { padding: 3px 6px; border-bottom: 0.5px solid #ccc; }
     tbody tr:last-child td { border-bottom: none; }
+    /* 一题多图 / 表格与图片同行并排容器 */
     .exam-images-row {
       display: flex !important;
       flex-direction: row !important;
       justify-content: center !important;
       align-items: center !important;
-      flex-wrap: wrap !important;
+      flex-wrap: nowrap !important;
+      gap: 16px !important;
+      margin: 10px auto !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }
+    .exam-images-row > .img,
+    .exam-images-row > table,
+    .exam-images-row > .table-wrap {
+      margin: 0 !important;
+      min-width: 120px !important;
+      max-width: calc(100% - 136px) !important;
+      box-sizing: border-box !important;
+      flex: 1 1 0;
+    }
+    .exam-images-row > table,
+    .exam-images-row > .table-wrap table {
+      width: 100% !important;
+      max-width: 100% !important;
+      margin: 0 auto !important;
+      font-size: 11px !important;
+    }
+    .exam-images-row .img svg,
+    .exam-images-row .img img {
+      max-width: 100% !important;
+      max-height: 180px !important;
+      width: auto !important;
+      height: auto !important;
+      display: inline-block !important;
+      object-fit: contain !important;
+    }
+    .exam-atomic-phrase {
+      display: inline-block !important;
+      white-space: nowrap !important;
+      word-break: keep-all !important;
+    }
+    .exam-row-group {
+      display: flex !important;
+      flex-direction: row !important;
+      justify-content: center !important;
+      align-items: center !important;
+      flex-wrap: nowrap !important;
       gap: 16px !important;
       margin: 8px auto !important;
       width: 100% !important;
@@ -915,19 +1057,16 @@ function generateFullPrintHtml(): string {
       break-inside: avoid !important;
       page-break-inside: avoid !important;
     }
-    .exam-images-row .img {
-      margin: 0 !important;
-      flex: 0 1 auto !important;
-    }
-    .exam-images-row .img svg,
-    .exam-images-row .img img {
+    .exam-row-group > * {
+      flex: 1 1 0% !important;
       max-width: 100% !important;
-      max-height: 150px !important;
-      width: auto !important;
+    }
+    .exam-row-group svg {
+      width: 100% !important;
       height: auto !important;
-      display: inline-block !important;
     }
     .img {
+
       text-align: center;
       margin: 8px auto;
       break-inside: avoid !important;
@@ -1011,6 +1150,8 @@ async function handleExportPdfDirect() {
   justify-content: space-between;
   align-items: center;
   background-color: var(--md-sys-color-surface-container-low);
+  -webkit-app-region: drag;
+  user-select: none;
 }
 
 .sidebar-title {
@@ -1647,32 +1788,75 @@ async function handleExportPdfDirect() {
   background-color: var(--md-sys-color-on-primary);
 }
 
-/* 一题多图并排样式穿透 */
+/* 一题多图 / 表格与图片同行并排样式穿透 */
 :deep(.exam-images-row) {
   display: flex !important;
   flex-direction: row !important;
   justify-content: center !important;
   align-items: center !important;
-  flex-wrap: wrap !important;
+  flex-wrap: nowrap !important;
   gap: 16px !important;
-  margin: 8px auto !important;
+  margin: 10px auto !important;
   width: 100% !important;
   box-sizing: border-box !important;
   break-inside: avoid !important;
   page-break-inside: avoid !important;
 }
 
-:deep(.exam-images-row .img) {
+:deep(.exam-images-row > .img),
+:deep(.exam-images-row > table),
+:deep(.exam-images-row > .table-wrap) {
   margin: 0 !important;
-  flex: 0 1 auto !important;
+  min-width: 120px !important;
+  max-width: calc(100% - 136px) !important;
+  box-sizing: border-box !important;
+  flex: 1 1 0;
+}
+
+:deep(.exam-images-row > table),
+:deep(.exam-images-row > .table-wrap table) {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 auto !important;
+  font-size: 11px !important;
 }
 
 :deep(.exam-images-row .img svg),
 :deep(.exam-images-row .img img) {
   max-width: 100% !important;
-  max-height: 150px !important;
+  max-height: 180px !important;
   width: auto !important;
   height: auto !important;
   display: inline-block !important;
+  object-fit: contain !important;
+}
+
+:deep(.exam-atomic-phrase) {
+  display: inline-block !important;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+}
+
+:deep(.exam-row-group) {
+  display: flex !important;
+  flex-direction: row !important;
+  justify-content: center !important;
+  align-items: center !important;
+  flex-wrap: nowrap !important;
+  gap: 16px !important;
+  margin: 8px auto !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+:deep(.exam-row-group > *) {
+  flex: 1 1 0% !important;
+  max-width: 100% !important;
+}
+
+:deep(.exam-row-group svg) {
+  width: 100% !important;
+  height: auto !important;
 }
 </style>
+

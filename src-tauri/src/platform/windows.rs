@@ -5,8 +5,8 @@ use std::process::Command;
 use std::os::windows::process::CommandExt;
 
 /// Windows 原生无窗口创建标志（彻底杜绝黑色控制台窗口闪烁）
-#[allow(dead_code)]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
+pub const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 
 /// 级联探测 Windows 平台下可用的 Chromium/Edge 渲染引擎
 pub fn find_windows_browser() -> Option<PathBuf> {
@@ -115,3 +115,41 @@ pub fn open_path(path: &str) -> Result<(), String> {
         .map_err(|e| format!("无法在 Windows 下打开路径 {}: {}", path, e))?;
     Ok(())
 }
+
+/// 在 Windows 下利用系统自带 Edge/Chromium 引擎无头截屏导出高清晰度 PNG 图片
+pub fn export_image(html_path: &Path, output_path: &Path) -> Result<(), String> {
+    let browser_path = find_windows_browser().ok_or_else(|| {
+        "未在系统中找到 Microsoft Edge 或 Chrome 浏览器渲染引擎，无法完成图片导出。".to_string()
+    })?;
+
+    let html_str = html_path
+        .to_str()
+        .ok_or_else(|| "HTML 路径格式不合法".to_string())?;
+    let out_str = output_path
+        .to_str()
+        .ok_or_else(|| "图片输出路径格式不合法".to_string())?;
+
+    let mut cmd = Command::new(&browser_path);
+    cmd.args([
+        "--headless=new",
+        "--disable-gpu",
+        "--hide-scrollbars",
+        "--window-size=920,1600",
+        &format!("--screenshot={}", out_str),
+        html_str,
+    ]);
+
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("调用 Windows 截图引擎失败: {}", e))?;
+
+    if !output.status.success() || !output_path.exists() {
+        return Err("Windows 渲染生成图片失败".to_string());
+    }
+
+    Ok(())
+}
+

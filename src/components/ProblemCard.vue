@@ -1,5 +1,6 @@
 <template>
   <div
+    :id="'problem-card-' + problem.uuid"
     class="m3-problem-card"
     :class="{
       'in-print-cart': inCart,
@@ -132,6 +133,9 @@
 
       <!-- 快捷工具按钮 -->
       <div class="capsule-actions">
+        <button class="capsule-btn btn-edit" title="可视化画布编辑" @click.stop="$emit('edit', problem)">
+          <Edit3 :size="13" />
+        </button>
         <button class="capsule-btn" title="转移 / 复制到其他错题本" @click.stop="$emit('transfer', problem)">
           <FolderInput :size="13" />
         </button>
@@ -149,9 +153,9 @@
 <script setup lang="ts">
 import { ref, computed, nextTick } from 'vue';
 import type { Problem } from '../types/problem';
-import { renderLatexInHtml } from '../utils/katexRender';
+import { formatProblemForExam } from '../utils/examFormatter';
 import { apiUpdateProblemTags } from '../utils/api';
-import { Plus, Check, Copy, Trash2, X, FolderInput } from 'lucide-vue-next';
+import { Plus, Check, Copy, Trash2, X, FolderInput, Edit3 } from 'lucide-vue-next';
 
 const props = defineProps<{
   problem: Problem;
@@ -169,13 +173,17 @@ const emit = defineEmits<{
   (e: 'tagClick', tag: string): void;
   (e: 'toggleSelect', uuid: string): void;
   (e: 'transfer', problem: Problem): void;
+  (e: 'edit', problem: Problem): void;
 }>();
 
 function onCardClick() {
   if (props.selectable) {
     emit('toggleSelect', props.problem.uuid);
+  } else {
+    emit('edit', props.problem);
   }
 }
+
 
 const showAddTagInput = ref(false);
 const newTagText = ref('');
@@ -186,7 +194,7 @@ const currentTags = computed(() => {
 });
 
 const renderedContent = computed(() => {
-  return renderLatexInHtml(props.problem.raw_html);
+  return formatProblemForExam(props.problem.raw_html);
 });
 
 function formatDate(dateStr: string): string {
@@ -307,6 +315,70 @@ function confirmDelete() {
 
 [data-theme="dark"] .m3-problem-card.is-selected {
   background: #141f2d !important;
+}
+
+/* M3 Locate & Pulse Highlight (从编辑页返回时精准定位高亮动效) */
+@keyframes m3-locate-pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 var(--md-sys-color-primary, #00639b);
+  }
+  20% {
+    transform: scale(1.012);
+    border-color: var(--md-sys-color-primary, #00639b);
+    box-shadow: 0 0 0 3px var(--md-sys-color-primary-container, #cee5ff), 0 8px 20px rgba(0, 99, 155, 0.16);
+  }
+  45% {
+    transform: scale(1);
+    border-color: var(--md-sys-color-primary, #00639b);
+    box-shadow: 0 0 0 2px var(--md-sys-color-primary, #00639b), 0 4px 12px rgba(0, 99, 155, 0.1);
+  }
+  70% {
+    transform: scale(1.008);
+    border-color: var(--md-sys-color-primary, #00639b);
+    box-shadow: 0 0 0 3px var(--md-sys-color-primary-container, #cee5ff), 0 6px 16px rgba(0, 99, 155, 0.14);
+  }
+  100% {
+    transform: scale(1);
+    border-color: var(--md-sys-color-outline-variant);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  }
+}
+
+@keyframes m3-locate-pulse-dark {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 var(--md-sys-color-primary, #9ecaff);
+  }
+  20% {
+    transform: scale(1.012);
+    border-color: var(--md-sys-color-primary, #9ecaff);
+    box-shadow: 0 0 0 3px rgba(158, 202, 255, 0.35), 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+  45% {
+    transform: scale(1);
+    border-color: var(--md-sys-color-primary, #9ecaff);
+    box-shadow: 0 0 0 2px var(--md-sys-color-primary, #9ecaff), 0 4px 14px rgba(0, 0, 0, 0.3);
+  }
+  70% {
+    transform: scale(1.008);
+    border-color: var(--md-sys-color-primary, #9ecaff);
+    box-shadow: 0 0 0 3px rgba(158, 202, 255, 0.35), 0 6px 18px rgba(0, 0, 0, 0.35);
+  }
+  100% {
+    transform: scale(1);
+    border-color: var(--md-sys-color-outline-variant);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  }
+}
+
+.m3-problem-card.locate-pulse-highlight {
+  animation: m3-locate-pulse 2.2s cubic-bezier(0.2, 0, 0, 1) forwards;
+  z-index: 5;
+}
+
+[data-theme="dark"] .m3-problem-card.locate-pulse-highlight {
+  animation-name: m3-locate-pulse-dark;
 }
 
 /* Card Checkbox */
@@ -492,6 +564,7 @@ function confirmDelete() {
 .card-content {
   color: var(--md-sys-color-on-surface);
   min-height: 40px;
+  container-type: inline-size;
 }
 
 :deep(.naosu-problem) {

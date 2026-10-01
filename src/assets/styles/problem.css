@@ -15,6 +15,7 @@
   line-height: 1.65;
   word-break: break-word;
   color: var(--md-sys-color-on-surface, #1a1c1e);
+  container-type: inline-size;
 }
 
 /* 引导词与小问 */
@@ -24,7 +25,10 @@
   color: var(--md-sys-color-on-surface, #202124);
 }
 
-.sub-item {
+.naosu-problem .sub-item,
+.problem-body .sub-item,
+.paper-sheet .sub-item,
+body.print-paper-body .sub-item {
   margin-bottom: 8px;
   text-indent: -1.2em;
   padding-left: 1.2em;
@@ -46,54 +50,183 @@
 .blank-lg { width: 140px; }
 .blank-xl { width: 210px; }
 
-/* 深色模式下错题卡片适配 */
-[data-theme="dark"] .m3-problem-card .problem-body svg {
+/* 深色模式下错题卡片与编辑态画板适配（仅配图矢量 SVG，严格排除 KaTeX 根号等公式内部矢量） */
+[data-theme="dark"] .m3-problem-card .problem-body .img svg,
+[data-theme="dark"] .word-document-content .img svg {
   filter: invert(0.88) hue-rotate(180deg);
 }
-[data-theme="dark"] .m3-problem-card table {
+.word-document-content .img {
+  overflow: visible !important;
+}
+.word-document-content .img svg {
+  max-width: 100% !important;
+  max-height: none !important;
+}
+[data-theme="dark"] .m3-problem-card table,
+[data-theme="dark"] .word-document-content table {
   border-top-color: #e2e2e6 !important;
   border-bottom-color: #e2e2e6 !important;
 }
-[data-theme="dark"] .m3-problem-card thead tr {
+[data-theme="dark"] .m3-problem-card thead tr,
+[data-theme="dark"] .word-document-content thead tr {
   border-bottom-color: #e2e2e6 !important;
   background-color: rgba(255, 255, 255, 0.06) !important;
 }
-[data-theme="dark"] .m3-problem-card th {
+[data-theme="dark"] .m3-problem-card th,
+[data-theme="dark"] .word-document-content th {
   color: #e2e2e6 !important;
 }
-[data-theme="dark"] .m3-problem-card td {
+[data-theme="dark"] .m3-problem-card td,
+[data-theme="dark"] .word-document-content td {
   border-bottom-color: #3a3d45 !important;
   color: #c3c7cf !important;
 }
 
 
-/* 基础选项排布 */
+/* 基础选项排布：全局默认基线对齐 */
 .options {
   margin: 8px 0;
   padding-left: 6px;
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 6px 16px !important;
+  align-items: baseline;
 }
 
 /* 选项智能分列网格 (Options Grid) */
-.options-grid.options-4-col {
-  display: grid !important;
-  grid-template-columns: repeat(4, 1fr) !important;
-  gap: 4px 12px !important;
+/* 1. 四列单行横排 (4-col)：适合简短选项（如单数、坐标、简单区间），保证四个选项间距相同且优雅 */
+.options-grid.options-4-col,
+.options.options-4-col {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: baseline !important;
+  column-gap: 28px !important;
+  row-gap: 6px !important;
+  max-width: 820px;
 }
 
-.options-grid.options-2-col {
-  display: grid !important;
-  grid-template-columns: repeat(2, 1fr) !important;
-  gap: 4px 16px !important;
+.options-grid.options-4-col > span,
+.options.options-4-col > span {
+  white-space: nowrap !important;
+  flex: 0 0 auto !important;
 }
 
-.options-grid.options-1-col {
+/* 2. 双列两两对称横排 (2-col)：A B / C D */
+.options-grid.options-2-col,
+.options.options-2-col {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  column-gap: 20px !important;
+  row-gap: 6px !important;
+  align-items: baseline;
+  max-width: 820px;
+}
+
+/* 3. 单列纵向排布 (1-col)：每行一个选项 */
+.options-grid.options-1-col,
+.options.options-1-col {
   display: grid !important;
   grid-template-columns: 1fr !important;
-  gap: 4px !important;
+  row-gap: 6px !important;
+  align-items: baseline;
 }
 
-.options span {
-  display: inline-block;
+.options > span {
+  display: block;
+  box-sizing: border-box;
+  min-width: 0;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+/* 响应式自适应：当屏幕或容器较窄时（如移动端、窄分栏卡片、双栏纸张排版），自适应平滑降级 */
+@container (max-width: 620px) {
+  .options-grid.options-4-col,
+  .options.options-4-col {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    column-gap: 16px !important;
+    row-gap: 6px !important;
+  }
+  .options-grid.options-4-col > span,
+  .options.options-4-col > span {
+    white-space: normal;
+    word-break: break-word;
+  }
+}
+
+@container (max-width: 440px) {
+  .options,
+  .options.options-2-col,
+  .options.options-4-col,
+  .options-grid.options-2-col,
+  .options-grid.options-4-col {
+    grid-template-columns: 1fr !important;
+    gap: 4px !important;
+  }
+  .options > span {
+    white-space: normal;
+    word-break: break-word;
+  }
+}
+
+@media (max-width: 680px) {
+  .options-grid.options-4-col,
+  .options.options-4-col {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    column-gap: 16px !important;
+    row-gap: 6px !important;
+  }
+  .options-grid.options-4-col > span,
+  .options.options-4-col > span {
+    white-space: normal;
+    word-break: break-word;
+  }
+}
+
+@media (max-width: 500px) {
+  .options,
+  .options.options-2-col,
+  .options.options-4-col,
+  .options-grid.options-2-col,
+  .options-grid.options-4-col {
+    grid-template-columns: 1fr !important;
+    gap: 4px !important;
+  }
+  .options > span {
+    white-space: normal;
+    word-break: break-word;
+  }
+}
+
+/* 严格隔离与重置 KaTeX 内部元素样式，杜绝外部 span、min-width 污染 */
+.katex,
+.katex * {
+  min-width: 0 !important;
+  max-width: none !important;
+  box-sizing: content-box !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+}
+
+.katex {
+  font-size: 1.05em;
+  text-rendering: auto;
+}
+
+.katex svg {
+  display: inline-block !important;
+  max-width: none !important;
+  max-height: none !important;
+  width: auto;
+  height: auto;
+  fill: currentColor !important;
+  stroke: none !important;
+  filter: none !important;
+}
+
+.katex-display {
+  margin: 0.6em 0 !important;
 }
 
 /* 理科试卷标准三线表排版 */
@@ -132,33 +265,51 @@
   border-bottom: none;
 }
 
-/* 一题多图横向排布容器 (同一题内多张图片并列排在同一行) */
+/* 一题多图 / 表格与图片同行并排容器 */
 .exam-images-row {
   display: flex !important;
   flex-direction: row !important;
   justify-content: center !important;
   align-items: center !important;
-  flex-wrap: wrap !important;
+  flex-wrap: nowrap !important;
   gap: 16px !important;
-  margin: 8px auto !important;
+  margin: 12px auto !important;
   width: 100% !important;
   box-sizing: border-box !important;
   break-inside: avoid !important;
   page-break-inside: avoid !important;
 }
 
-.exam-images-row .img {
+.exam-images-row > .img,
+.exam-images-row > table,
+.exam-images-row > .table-wrap,
+.exam-images-row > .canvas-media-shell {
   margin: 0 !important;
-  flex: 0 1 auto !important;
+  min-width: 120px !important;
+  max-width: calc(100% - 136px) !important;
+  clear: none !important;
+  box-sizing: border-box !important;
+  flex: 1 1 0;
+}
+
+.exam-images-row > table,
+.exam-images-row > .table-wrap table,
+.exam-images-row .canvas-media-shell.table-shell table {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 auto !important;
+  font-size: 11.5px !important;
 }
 
 .exam-images-row .img svg,
-.exam-images-row .img img {
+.exam-images-row .img img,
+.exam-images-row .canvas-media-shell svg {
   max-width: 100% !important;
-  max-height: 150px !important;
+  max-height: 200px !important;
   width: auto !important;
   height: auto !important;
   display: inline-block !important;
+  object-fit: contain !important;
 }
 
 /* 独立 SVG 矢量图居中与自适应约束 */

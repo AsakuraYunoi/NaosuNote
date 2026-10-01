@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>NaosuNote 账号注册 · 直すノート</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg viewBox='0 0 40 40' fill='none' xmlns='http://www.w3.org/2000/svg'><rect width='40' height='40' rx='12' fill='%2300639b'/><path d='M12 11H25C26.6569 11 28 12.3431 28 14V27C28 28.6569 26.6569 30 25 30H12V11Z' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/><path d='M17 18L21 22L30 13' stroke='%239ecaff' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+  <style>
+    :root {
+      --primary: #00639b;
+      --primary-container: #cbe6ff;
+      --on-primary: #ffffff;
+      --on-primary-container: #001d33;
+      --surface: #fdfcff;
+      --surface-dim: #ded8e1;
+      --surface-container-low: #f7f2fa;
+      --surface-container: #f3edf7;
+      --surface-container-high: #ece6f0;
+      --on-surface: #1a1c1e;
+      --on-surface-variant: #43474e;
+      --outline: #73777f;
+      --outline-variant: #c3c7d0;
+      --error: #ba1a1a;
+      --error-container: #ffdad6;
+      --success: #1b6d2e;
+      --success-container: #a3f7a6;
+      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --primary: #90cdff;
+        --primary-container: #004b77;
+        --on-primary: #003353;
+        --on-primary-container: #cbe6ff;
+        --surface: #111418;
+        --surface-dim: #111418;
+        --surface-container-low: #191c20;
+        --surface-container: #1e2024;
+        --surface-container-high: #282a2f;
+        --on-surface: #e2e2e6;
+        --on-surface-variant: #c3c7d0;
+        --outline: #8d9199;
+        --outline-variant: #43474e;
+        --error: #ffb4ab;
+        --error-container: #93000a;
+        --success: #88da8d;
+        --success-container: #00531c;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: var(--font-family);
+      background-color: var(--surface);
+      color: var(--on-surface);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
+
+    .register-card {
+      width: 100%;
+      max-width: 440px;
+      background: var(--surface-container-low);
+      border: 1px solid var(--outline-variant);
+      border-radius: 28px;
+      padding: 36px 32px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .brand-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    .brand-logo-mark {
+      width: 54px;
+      height: 54px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #00639b 0%, #003757 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 14px;
+      box-shadow: 0 4px 12px rgba(0, 99, 155, 0.25);
+    }
+
+    .brand-logo-mark svg {
+      width: 32px;
+      height: 32px;
+    }
+
+    .brand-title {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.2px;
+      color: var(--on-surface);
+      margin-bottom: 4px;
+    }
+
+    .brand-sub {
+      font-size: 13px;
+      color: var(--on-surface-variant);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .badge-test {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 8px;
+      background: var(--primary-container);
+      color: var(--on-primary-container);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .form-group {
+      margin-bottom: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--on-surface-variant);
+      letter-spacing: 0.2px;
+    }
+
+    .input-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .form-input {
+      width: 100%;
+      height: 48px;
+      padding: 0 16px;
+      background: var(--surface);
+      border: 1px solid var(--outline-variant);
+      border-radius: 12px;
+      color: var(--on-surface);
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .form-input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(0, 99, 155, 0.15);
+    }
+
+    .form-input.has-eye {
+      padding-right: 44px;
+    }
+
+    .toggle-pwd-btn {
+      position: absolute;
+      right: 12px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--outline);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px;
+      border-radius: 8px;
+    }
+
+    .toggle-pwd-btn:hover {
+      color: var(--on-surface);
+      background: var(--surface-container);
+    }
+
+    .input-hint {
+      font-size: 11px;
+      color: var(--outline);
+      margin-top: 2px;
+    }
+
+    .btn-submit {
+      width: 100%;
+      height: 50px;
+      margin-top: 10px;
+      background: var(--primary);
+      color: var(--on-primary);
+      border: none;
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 14px rgba(0, 99, 155, 0.25);
+      transition: transform 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+    }
+
+    .btn-submit:hover:not(:disabled) {
+      opacity: 0.94;
+      transform: translateY(-1px);
+    }
+
+    .btn-submit:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .btn-submit:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .alert-banner {
+      padding: 12px 14px;
+      border-radius: 12px;
+      font-size: 13px;
+      margin-bottom: 20px;
+      display: none;
+      align-items: flex-start;
+      gap: 10px;
+      line-height: 1.45;
+    }
+
+    .alert-banner.error {
+      display: flex;
+      background: var(--error-container);
+      color: var(--error);
+      border: 1px solid rgba(186, 26, 26, 0.2);
+    }
+
+    .alert-banner.success {
+      display: flex;
+      background: var(--success-container);
+      color: var(--success);
+      border: 1px solid rgba(27, 109, 46, 0.2);
+    }
+
+    .success-view {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 12px 0;
+    }
+
+    .success-icon-wrap {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: var(--success-container);
+      color: var(--success);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+
+    .success-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .success-desc {
+      font-size: 13.5px;
+      color: var(--on-surface-variant);
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+
+    .app-tips-card {
+      width: 100%;
+      background: var(--surface);
+      border: 1px dashed var(--outline-variant);
+      border-radius: 14px;
+      padding: 16px;
+      text-align: left;
+      font-size: 12.5px;
+      color: var(--on-surface-variant);
+      line-height: 1.6;
+    }
+
+    .app-tips-card strong {
+      color: var(--on-surface);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .footer-note {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 12px;
+      color: var(--outline);
+    }
+
+    .spin {
+      animation: spin 0.9s linear infinite;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+
+  <main class="register-card">
+    <!-- Brand Header -->
+    <header class="brand-header">
+      <div class="brand-logo-mark">
+        <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 11H25C26.6569 11 28 12.3431 28 14V27C28 28.6569 26.6569 30 25 30H12V11Z" stroke="white" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M17 18L21 22L30 13" stroke="#9ecaff" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <h1 class="brand-title">NaosuNote 账号注册</h1>
+      <p class="brand-sub">
+        <span>直すノート · 错题管理云服务</span>
+        <span class="badge-test">内测限定</span>
+      </p>
+    </header>
+
+    <!-- Global Feedback Alert -->
+    <div id="alertBanner" class="alert-banner" role="alert"></div>
+
+    <!-- Registration Form -->
+    <form id="registerForm" novalidate>
+      <!-- Identifier -->
+      <div class="form-group">
+        <label class="form-label" for="identifier">邮箱或手机号</label>
+        <div class="input-wrapper">
+          <input
+            id="identifier"
+            type="text"
+            class="form-input"
+            placeholder="example@outlook.com / 13800000000"
+            required
+            autocomplete="username"
+          />
+        </div>
+        <span class="input-hint">用于在客户端软件登录及多端数据同步凭据</span>
+      </div>
+
+      <!-- Nickname -->
+      <div class="form-group">
+        <label class="form-label" for="nickname">个人昵称</label>
+        <div class="input-wrapper">
+          <input
+            id="nickname"
+            type="text"
+            class="form-input"
+            placeholder="如：ゆのい 朝倉"
+            maxlength="20"
+            required
+          />
+        </div>
+      </div>
+
+      <!-- Invite Code -->
+      <div class="form-group">
+        <label class="form-label" for="inviteCode">邀请码</label>
+        <div class="input-wrapper">
+          <input
+            id="inviteCode"
+            type="text"
+            class="form-input"
+            placeholder="如：NAOSU-TEST-001"
+            style="text-transform: uppercase;"
+            required
+          />
+        </div>
+        <span class="input-hint">测试阶段限制体验人数，请填写管理员分发的邀请码</span>
+      </div>
+
+      <!-- Password -->
+      <div class="form-group">
+        <label class="form-label" for="password">设置密码</label>
+        <div class="input-wrapper">
+          <input
+            id="password"
+            type="password"
+            class="form-input has-eye"
+            placeholder="至少 6 位字符"
+            minlength="6"
+            required
+            autocomplete="new-password"
+          />
+          <button type="button" class="toggle-pwd-btn" data-target="password" title="显示/隐藏密码">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Confirm Password -->
+      <div class="form-group">
+        <label class="form-label" for="confirmPassword">确认密码</label>
+        <div class="input-wrapper">
+          <input
+            id="confirmPassword"
+            type="password"
+            class="form-input has-eye"
+            placeholder="请再次输入设置的密码"
+            minlength="6"
+            required
+            autocomplete="new-password"
+          />
+          <button type="button" class="toggle-pwd-btn" data-target="confirmPassword" title="显示/隐藏密码">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <button id="submitBtn" type="submit" class="btn-submit">
+        <span>立即注册并锁定席位</span>
+      </button>
+    </form>
+
+    <!-- Success View -->
+    <div id="successView" class="success-view">
+      <div class="success-icon-wrap">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <h2 class="success-title">恭喜！注册成功</h2>
+      <p class="success-desc">
+        您的账号 <strong id="successIdentifier" style="color:var(--primary);"></strong> 已就绪。<br>
+        服务器已为您初始化专属错题数据沙盒与云端同步空间（200 MB）。
+      </p>
+
+      <div class="app-tips-card">
+        <strong>如何开始使用：</strong>
+        1. 启动已安装的 <strong>NaosuNote 客户端</strong>（桌面端或移动端）；<br>
+        2. 点击左下角头像展开个人卡片，点击<strong>「登录」</strong>；<br>
+        3. 输入刚刚注册的账号与密码，即可开启多端无缝云同步。
+      </div>
+    </div>
+
+    <footer class="footer-note">
+      NaosuNote · 理科学科错题管理与智能重练排版系统
+    </footer>
+  </main>
+
+  <script>
+    const form = document.getElementById('registerForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const alertBanner = document.getElementById('alertBanner');
+    const successView = document.getElementById('successView');
+    const successIdentifier = document.getElementById('successIdentifier');
+
+    // 密码明暗切换
+    document.querySelectorAll('.toggle-pwd-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const inputId = btn.getAttribute('data-target');
+        const input = document.getElementById(inputId);
+        if (input.type === 'password') {
+          input.type = 'text';
+          btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+        } else {
+          input.type = 'password';
+          btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+        }
+      });
+    });
+
+    function showAlert(msg, type = 'error') {
+      alertBanner.textContent = msg;
+      alertBanner.className = `alert-banner ${type}`;
+      alertBanner.style.display = 'flex';
+    }
+
+    function hideAlert() {
+      alertBanner.style.display = 'none';
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideAlert();
+
+      const identifier = document.getElementById('identifier').value.trim();
+      const nickname = document.getElementById('nickname').value.trim();
+      const inviteCode = document.getElementById('inviteCode').value.trim().toUpperCase();
+      const password = document.getElementById('password').value;
+      const confirmPassword = document.getElementById('confirmPassword').value;
+
+      if (!identifier) return showAlert('请输入手机号或邮箱');
+      if (!nickname) return showAlert('请输入个人昵称');
+      if (!inviteCode) return showAlert('测试阶段必须填写邀请码');
+      if (!password || password.length < 6) return showAlert('密码长度不能少于 6 位');
+      if (password !== confirmPassword) return showAlert('两次输入的密码不一致，请检查');
+
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `
+        <svg class="spin" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        <span>正在校验并注册...</span>
+      `;
+
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            identifier,
+            nickname,
+            invite_code: inviteCode,
+            password
+          })
+        });
+
+        const data = await res.json();
+
+        if (res.ok && data.code === 200) {
+          form.style.display = 'none';
+          successIdentifier.textContent = identifier;
+          successView.style.display = 'flex';
+        } else {
+          showAlert(data.message || '注册失败，请稍后重试');
+        }
+      } catch (err) {
+        showAlert('无法连接至 NaosuNote 服务端，请检查网络或稍后重试');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = `<span>立即注册并锁定席位</span>`;
+      }
+    });
+  </script>
+</body>
+</html>

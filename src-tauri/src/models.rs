@@ -1,6 +1,14 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DeviceInfo {
+    pub platform: String,    // "desktop" | "mobile"
+    pub form_factor: String, // "desktop" | "pad" | "phone"
+    pub os: String,          // "macos" | "windows" | "linux" | "android" | "ios"
+    pub screen_width_dp: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Notebook {
     pub id: String,
     pub name: String,
@@ -22,6 +30,8 @@ pub struct Problem {
     pub difficulty: i32,
     pub importance: i32,
     pub tags: Option<Vec<String>>,
+    pub answer_markdown: Option<String>,
+    pub answer_images: Option<Vec<String>>,
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
 }
@@ -38,6 +48,8 @@ pub struct ProblemInput {
     pub raw_html: String,
     pub stem_clean_text: String,
     pub tags: Option<Vec<String>>,
+    pub answer_markdown: Option<String>,
+    pub answer_images: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

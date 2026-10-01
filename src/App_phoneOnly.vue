@@ -1,0 +1,372 @@
+<template>
+  <div class="app-layout-phone">
+    <!-- Top Notch / Status Bar Safe Area Spacer -->
+    <div class="safe-area-top"></div>
+
+    <!-- Main Content Area with View Transitions -->
+    <main class="main-content-phone">
+      <Transition :name="transitionName">
+        <KeepAlive :include="['LibraryView_phoneOnly', 'IngestView_phoneOnly', 'PrintView_phoneOnly', 'SettingsView_phoneOnly']">
+          <LibraryView_phoneOnly
+            v-if="currentTab === 'library'"
+            key="library"
+            :print-cart="printCart"
+            :is-auto-syncing="isAutoSyncing"
+            :target-problem="lastActiveProblem"
+            :target-subject="lastActiveSubject"
+            :target-notebook-id="lastActiveNotebookId"
+            @nav="currentTab = $event"
+            @toggle-cart="toggleCart"
+            @remove-from-cart="removeFromCart"
+            @notify="showToast"
+            @edit-problem="openProblemDetail"
+            @clear-target="clearTargetProblem"
+            @open-profile="openProfilePage"
+          />
+
+          <IngestView_phoneOnly
+            v-else-if="currentTab === 'ingest'"
+            key="ingest"
+            @nav="currentTab = $event"
+            @notify="showToast"
+          />
+
+          <PrintView_phoneOnly
+            v-else-if="currentTab === 'print'"
+            key="print"
+            :print-cart="printCart"
+            @nav="currentTab = $event"
+            @clear-cart="clearCart"
+            @remove-from-cart="removeFromCart"
+            @move-up="moveCartItemUp"
+            @move-down="moveCartItemDown"
+            @notify="showToast"
+          />
+
+          <SettingsView_phoneOnly
+            v-else-if="currentTab === 'settings'"
+            key="settings"
+            @notify="showToast"
+            @open-profile="openProfilePage"
+          />
+
+          <ProblemDetailView_phoneOnly
+            v-else-if="currentTab === 'problem-detail' && editingProblem"
+            key="detail"
+            :problem="editingProblem"
+            @back="onBackToLibrary"
+            @saved="onProblemSaved"
+            @notify="showToast"
+          />
+
+          <ProfileView_phoneOnly
+            v-else-if="currentTab === 'profile'"
+            key="profile"
+            @back="onBackFromProfile"
+            @notify="showToast"
+          />
+        </KeepAlive>
+      </Transition>
+    </main>
+
+    <!-- Bottom Navigation Bar (Hidden with smooth slide when editing problem or viewing full profile) -->
+    <Transition name="mobile-bar-slide">
+      <NavigationBar_phoneOnly
+        v-if="currentTab !== 'problem-detail' && currentTab !== 'profile'"
+        v-model:current-tab="currentTab"
+        :print-count="printCart.length"
+      />
+    </Transition>
+
+    <!-- Toast Notification (Snackbar) -->
+    <Toast
+      :visible="toastVisible"
+      :message="toastMsg"
+      @close="toastVisible = false"
+    />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted, watch } from 'vue';
+import type { Problem } from './types/problem';
+import NavigationBar_phoneOnly from './components/NavigationBar_phoneOnly.vue';
+import LibraryView_phoneOnly from './views/LibraryView_phoneOnly.vue';
+import IngestView_phoneOnly from './views/IngestView_phoneOnly.vue';
+import PrintView_phoneOnly from './views/PrintView_phoneOnly.vue';
+import SettingsView_phoneOnly from './views/SettingsView_phoneOnly.vue';
+import ProblemDetailView_phoneOnly from './views/problem-detail/ProblemDetailView_phoneOnly.vue';
+import ProfileView_phoneOnly from './views/ProfileView_phoneOnly.vue';
+import Toast from './components/Toast.vue';
+import { apiSyncAllMirrors, apiSyncCloud } from './utils/api';
+
+const currentTab = ref('library');
+const previousTab = ref('library');
+const transitionName = ref('mobile-crossfade');
+const editingProblem = ref<Problem | null>(null);
+const printCart = ref<Problem[]>([]);
+const isAutoSyncing = ref(false);
+
+watch(currentTab, (newTab, oldTab) => {
+  if (newTab === 'problem-detail' || newTab === 'profile') {
+    transitionName.value = 'mobile-push';
+  } else if (oldTab === 'problem-detail' || oldTab === 'profile') {
+    transitionName.value = 'mobile-pop';
+  } else {
+    transitionName.value = 'mobile-crossfade';
+  }
+});
+
+const lastActiveProblem = ref<Problem | null>(null);
+const lastActiveSubject = ref<string | null>(null);
+const lastActiveNotebookId = ref<string | null>(null);
+
+const toastVisible = ref(false);
+const toastMsg = ref('');
+
+onMounted(async () => {
+  try {
+    await apiSyncAllMirrors();
+  } catch (e) {
+    console.error('Failed to sync mirrors on startup:', e);
+  }
+
+  // 手机端启动自动执行云同步 (若已登录)
+  if (localStorage.getItem('naosu_is_logged_in') === 'true') {
+    isAutoSyncing.value = true;
+    try {
+      const res = await apiSyncCloud();
+      if (res.pulledProblems > 0 || res.pushedProblems > 0) {
+        showToast(`已自动完成云同步 (拉取${res.pulledProblems}题 / 推送${res.pushedProblems}题)`);
+      }
+    } catch (err) {
+      console.warn('Auto cloud sync failed:', err);
+    } finally {
+      isAutoSyncing.value = false;
+    }
+  }
+});
+
+function showToast(msg: string) {
+  toastMsg.value = msg;
+  toastVisible.value = true;
+}
+
+function openProblemDetail(prob: Problem, context?: { subject?: string; notebookId?: string }) {
+  lastActiveProblem.value = prob;
+  if (context?.subject) {
+    lastActiveSubject.value = context.subject;
+  } else {
+    lastActiveSubject.value = prob.subject;
+  }
+  if (context?.notebookId) {
+    lastActiveNotebookId.value = context.notebookId;
+  } else {
+    lastActiveNotebookId.value = prob.notebook_id ?? null;
+  }
+
+  editingProblem.value = prob;
+  currentTab.value = 'problem-detail';
+}
+
+function onBackToLibrary() {
+  if (editingProblem.value) {
+    lastActiveProblem.value = editingProblem.value;
+    lastActiveSubject.value = editingProblem.value.subject;
+    lastActiveNotebookId.value = editingProblem.value.notebook_id ?? null;
+  }
+  currentTab.value = 'library';
+}
+
+function onProblemSaved(updated: Problem) {
+  const idx = printCart.value.findIndex((p) => p.uuid === updated.uuid);
+  if (idx >= 0) {
+    printCart.value[idx] = updated;
+  }
+  editingProblem.value = updated;
+  lastActiveProblem.value = updated;
+  lastActiveSubject.value = updated.subject;
+  lastActiveNotebookId.value = updated.notebook_id ?? null;
+}
+
+function clearTargetProblem() {
+  lastActiveProblem.value = null;
+  lastActiveSubject.value = null;
+  lastActiveNotebookId.value = null;
+}
+
+function toggleCart(problem: Problem) {
+  const index = printCart.value.findIndex((p) => p.uuid === problem.uuid);
+  if (index >= 0) {
+    printCart.value.splice(index, 1);
+    showToast(`已从打印篮移出: ${problem.summary || '选定题目'}`);
+  } else {
+    printCart.value.push(problem);
+    showToast(`已加入打印篮: ${problem.summary || '选定题目'}`);
+  }
+}
+
+function removeFromCart(uuid: string) {
+  printCart.value = printCart.value.filter((p) => p.uuid !== uuid);
+}
+
+function clearCart() {
+  printCart.value = [];
+}
+
+function moveCartItemUp(index: number) {
+  if (index > 0 && index < printCart.value.length) {
+    const item = printCart.value.splice(index, 1)[0];
+    printCart.value.splice(index - 1, 0, item);
+  }
+}
+
+function moveCartItemDown(index: number) {
+  if (index >= 0 && index < printCart.value.length - 1) {
+    const item = printCart.value.splice(index, 1)[0];
+    printCart.value.splice(index + 1, 0, item);
+  }
+}
+
+function openProfilePage() {
+  previousTab.value = currentTab.value;
+  currentTab.value = 'profile';
+}
+
+function onBackFromProfile() {
+  currentTab.value = previousTab.value || 'library';
+}
+</script>
+
+<style scoped>
+.app-layout-phone {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  width: 100vw;
+  background-color: var(--md-sys-color-background);
+  color: var(--md-sys-color-on-background);
+  overflow: hidden;
+  position: relative;
+}
+
+.safe-area-top {
+  height: env(safe-area-inset-top, 0px);
+  background-color: var(--md-sys-color-surface);
+  flex-shrink: 0;
+}
+
+.main-content-phone {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Mobile Tab Crossfade (Zero Blank Screen, Smooth Dissolve) */
+.mobile-crossfade-enter-active {
+  transition: opacity 0.14s cubic-bezier(0.16, 1, 0.3, 1), transform 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+}
+
+.mobile-crossfade-leave-active {
+  transition: opacity 0.09s cubic-bezier(0.4, 0, 1, 1);
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.mobile-crossfade-enter-from {
+  opacity: 0;
+  transform: scale(0.99) translateY(4px);
+}
+
+.mobile-crossfade-leave-to {
+  opacity: 0;
+}
+
+/* Mobile Push (iOS / Native Slide Left) */
+.mobile-push-enter-active {
+  transition: transform 0.22s cubic-bezier(0.32, 0.72, 0, 1);
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+}
+
+.mobile-push-leave-active {
+  transition: transform 0.22s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.22s ease;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.mobile-push-enter-from {
+  transform: translateX(100%);
+}
+
+.mobile-push-leave-to {
+  transform: translateX(-18%);
+  opacity: 0.88;
+}
+
+/* Mobile Pop (iOS / Native Slide Right) */
+.mobile-pop-enter-active {
+  transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.2s ease;
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+}
+
+.mobile-pop-leave-active {
+  transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.mobile-pop-enter-from {
+  transform: translateX(-18%);
+  opacity: 0.88;
+}
+
+.mobile-pop-leave-to {
+  transform: translateX(100%);
+}
+
+/* Bottom Bar Slide */
+.mobile-bar-slide-enter-active,
+.mobile-bar-slide-leave-active {
+  transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.15s ease;
+}
+
+.mobile-bar-slide-enter-from,
+.mobile-bar-slide-leave-to {
+  transform: translateY(100%);
+  opacity: 0;
+}
+</style>

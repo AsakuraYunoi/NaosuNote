@@ -1,7 +1,7 @@
 <template>
   <div class="library-view" @click="closeDropdowns">
     <!-- Layer 1: M3 Top App Bar (全局主栏：搜索与核心操作) -->
-    <header class="top-bar">
+    <header class="top-bar" data-tauri-drag-region="deep">
       <!-- M3 Docked Search Box (圆角 28px, 居中自适应, 四字段模糊搜索) -->
       <div class="m3-search-box">
         <Search :size="17" class="search-icon" />
@@ -30,7 +30,7 @@
     </header>
 
     <!-- Layer 2: M3 Primary Navigation Tabs (学科主导航条，符合 Google M3 Tab 规范) -->
-    <nav class="m3-primary-tabs-bar">
+    <nav class="m3-primary-tabs-bar" data-tauri-drag-region="deep">
       <div class="tabs-track">
         <button
           v-for="sub in subjects"
@@ -50,7 +50,7 @@
 
     <!-- Layer 3: Unified M3 Filter Toolbar (统一过滤工具条，移除全部老旧文字前缀) -->
     <div class="m3-filter-toolbar">
-      <!-- 错题本 Filter Chips 行 (带上下文局部新建 Action Chip) -->
+      <!-- 错题本 Filter Chips 行 (最右侧放置批量编辑与筛选抽屉按钮) -->
       <div class="toolbar-section notebooks-section">
         <div class="chips-scroll-container">
           <button
@@ -81,112 +81,107 @@
             <span>新建错题本</span>
           </button>
         </div>
+
+        <!-- 学科错题本附属子错题本那一行最右端：排序检索按钮（原批量编辑位置）和筛选按钮 -->
+        <div class="notebooks-right-actions">
+          <!-- M3 排序下拉菜单 (原批量编辑位置) -->
+          <div class="m3-menu-wrapper" ref="sortMenuRef">
+            <button
+              class="m3-menu-trigger-btn"
+              :class="{ active: showSortMenu }"
+              title="切换错题排序方式"
+              @click.stop="showSortMenu = !showSortMenu"
+            >
+              <ArrowUpDown :size="13" class="sort-icon" />
+              <span class="sort-current-label">{{ currentSortLabel }}</span>
+              <ChevronDown :size="12" class="chevron-arrow" :class="{ open: showSortMenu }" />
+            </button>
+
+            <!-- M3 Menu Popover -->
+            <transition name="m3-menu-fade">
+              <div v-if="showSortMenu" class="m3-dropdown-menu" @click.stop>
+                <button
+                  v-for="opt in sortOptions"
+                  :key="opt.value"
+                  class="m3-menu-item"
+                  :class="{ active: selectedSort === opt.value }"
+                  @click="onSelectSortOption(opt.value)"
+                >
+                  <Check v-if="selectedSort === opt.value" :size="13" class="menu-check-icon" />
+                  <span v-else class="menu-check-placeholder"></span>
+                  <span>{{ opt.label }}</span>
+                </button>
+              </div>
+            </transition>
+          </div>
+
+          <!-- 筛选抽屉按钮 -->
+          <button
+            class="m3-filter-chip filter-btn-chip"
+            :class="{ active: showFilterDrawer || hasActiveFilters }"
+            title="打开高级筛选抽屉"
+            @click="openFilterDrawer"
+          >
+            <SlidersHorizontal :size="14" />
+            <span>筛选</span>
+            <span v-if="activeFilterCount > 0" class="filter-count-badge">{{ activeFilterCount }}</span>
+          </button>
+        </div>
       </div>
 
-      <!-- 知识点 Tag · 题型 · 排序 统一过滤控制行 -->
-      <div class="toolbar-section secondary-filters-section">
-        <!-- 知识点 Tag 胶囊组 (动态聚合，多选交集 AND) -->
-        <div class="tags-filter-wrapper">
-          <div v-if="tagList.length > 0" class="chips-scroll-container">
-            <button
-              v-for="t in tagList"
-              :key="t.name"
-              class="m3-filter-chip tag-filter-chip"
-              :class="{ active: isTagSelected(t.name) }"
-              @click="toggleTag(t.name)"
-              :title="isTagSelected(t.name) ? '取消勾选该标签' : '交集筛选该标签'"
-            >
-              <span class="hash-symbol">#</span>
-              <span class="tag-text">{{ t.name }}</span>
-              <span class="tag-counter">{{ t.count }}</span>
-            </button>
-          </div>
-          <span v-else class="empty-tag-note">当前暂无标签，可在卡片上点击“+标签”快速添加</span>
-
-          <!-- 清除标签按钮 -->
+      <!-- 已激活的筛选胶囊徽章栏 (若在抽屉中选了题型、日期或标签，在此展示可快速移除的胶囊；已移除题目总计) -->
+      <div v-if="hasActiveFilters" class="toolbar-section secondary-filters-section active-filters-section">
+        <div class="active-filters-bar">
+          <!-- 题型徽章 -->
           <button
-            v-if="selectedTags.length > 0"
-            class="btn-clear-tags-chip"
-            title="清空已选标签"
-            @click="clearAllTags"
+            v-if="selectedType !== '全部'"
+            class="active-filter-badge"
+            title="移除题型筛选"
+            @click="selectType('全部')"
           >
-            <X :size="12" />
-            <span>清除标签 ({{ selectedTags.length }})</span>
-          </button>
-        </div>
-
-        <!-- 分割竖线 -->
-        <div class="m3-vertical-divider"></div>
-
-        <!-- 题型切换 Filter Chips -->
-        <div class="type-chips-group">
-          <button
-            v-for="t in types"
-            :key="t"
-            class="m3-filter-chip type-filter-chip"
-            :class="{ active: selectedType === t }"
-            @click="selectType(t)"
-          >
-            {{ t }}
-          </button>
-        </div>
-
-        <!-- 分割竖线 -->
-        <div class="m3-vertical-divider"></div>
-
-        <!-- M3 排序下拉菜单 (彻底替换原生 select) -->
-        <div class="m3-menu-wrapper" ref="sortMenuRef">
-          <button
-            class="m3-menu-trigger-btn"
-            :class="{ active: showSortMenu }"
-            @click.stop="showSortMenu = !showSortMenu"
-          >
-            <ArrowUpDown :size="13" class="sort-icon" />
-            <span class="sort-current-label">{{ currentSortLabel }}</span>
-            <ChevronDown :size="12" class="chevron-arrow" :class="{ open: showSortMenu }" />
+            <span>题型: {{ selectedType }}</span>
+            <X :size="11" />
           </button>
 
-          <!-- M3 Menu Popover -->
-          <transition name="m3-menu-fade">
-            <div v-if="showSortMenu" class="m3-dropdown-menu" @click.stop>
-              <button
-                v-for="opt in sortOptions"
-                :key="opt.value"
-                class="m3-menu-item"
-                :class="{ active: selectedSort === opt.value }"
-                @click="onSelectSortOption(opt.value)"
-              >
-                <Check v-if="selectedSort === opt.value" :size="13" class="menu-check-icon" />
-                <span v-else class="menu-check-placeholder"></span>
-                <span>{{ opt.label }}</span>
-              </button>
-            </div>
-          </transition>
-        </div>
+          <!-- 日期徽章 -->
+          <button
+            v-if="dateFilterDisplay"
+            class="active-filter-badge"
+            title="移除日期筛选"
+            @click="clearDateFilter"
+          >
+            <Calendar :size="11" />
+            <span>{{ dateFilterDisplay }}</span>
+            <X :size="11" />
+          </button>
 
-        <!-- 结果计数 -->
-        <div class="results-stats-chip">
-          <span v-if="selectedTags.length > 0" class="and-tag-badge">交集</span>
-          <span class="stats-text">共 {{ problems.length }} 题</span>
-        </div>
+          <!-- 标签徽章 -->
+          <button
+            v-for="tagName in selectedTags"
+            :key="tagName"
+            class="active-filter-badge tag-badge"
+            :title="'移除标签 ' + tagName"
+            @click="toggleTag(tagName)"
+          >
+            <span>#{{ tagName }}</span>
+            <X :size="11" />
+          </button>
 
-        <!-- 批量管理 Action Chip -->
-        <button
-          class="m3-filter-chip batch-chip"
-          :class="{ active: isBatchMode }"
-          title="开启 / 退出批量操作模式"
-          @click="toggleBatchMode"
-        >
-          <ListChecks :size="13" />
-          <span>批量管理</span>
-          <span v-if="selectedUuids.length > 0" class="batch-num-badge">{{ selectedUuids.length }}</span>
-        </button>
+          <!-- 清除所有筛选 -->
+          <button
+            class="btn-clear-all-filters"
+            title="重置全部筛选条件"
+            @click="resetAllFilters"
+          >
+            <span>清除所有筛选</span>
+          </button>
+        </div>
       </div>
     </div>
 
     <!-- Problems Scroll Area (错题呈现流) -->
-    <div class="problems-scroll-area">
-      <div v-if="loading" class="state-container">
+    <div ref="scrollContainerRef" class="problems-scroll-area">
+      <div v-if="loading && problems.length === 0" class="state-container">
         <div class="spinner"></div>
         <p>正在检索错题...</p>
       </div>
@@ -215,6 +210,7 @@
       <div v-else class="cards-grid">
         <ProblemCard
           v-for="prob in problems"
+          :id="'problem-card-' + prob.uuid"
           :key="prob.uuid"
           :problem="prob"
           :in-cart="isInCart(prob.uuid)"
@@ -228,8 +224,10 @@
           @delete="requestDeleteProblem(prob)"
           @notify="$emit('notify', $event)"
           @tag-click="onCardTagClick"
+          @edit="handleOpenDetail(prob)"
         />
       </div>
+
     </div>
 
     <!-- Create Notebook Dialog -->
@@ -383,6 +381,58 @@
       </div>
     </transition>
 
+    <!-- M3 Floating Action Speed Dial (屏幕右下角浮动菜单：类似图1/图2 Google官方演示规范) -->
+    <transition name="m3-fab-pop">
+      <div
+        v-if="!isBatchMode && selectedUuids.length === 0"
+        class="m3-speed-dial-wrapper"
+      >
+        <!-- Speed Dial Action Pills (浮动子菜单胶囊：默认展开，支持收回) -->
+        <transition name="m3-speed-dial-pills">
+          <div v-if="isFabExpanded" class="speed-dial-menu">
+            <!-- 同步 Action Pill (纯前端交互反馈与数据重载) -->
+            <button
+              class="speed-dial-action-pill"
+              :class="{ 'is-syncing': isManualSyncing }"
+              :disabled="isManualSyncing"
+              title="同步数据与镜像"
+              @click="triggerManualSync"
+            >
+              <div class="pill-icon-circle">
+                <RotateCw :size="15" :class="{ 'spin-anim': isManualSyncing }" />
+              </div>
+              <span class="pill-text">{{ isManualSyncing ? '同步中...' : '同步' }}</span>
+            </button>
+
+            <!-- 批量编辑 Action Pill (类似图1的 Select 胶囊) -->
+            <button
+              class="speed-dial-action-pill"
+              title="进入批量编辑模式"
+              @click="startBatchModeFromFab"
+            >
+              <div class="pill-icon-circle">
+                <ListChecks :size="15" />
+              </div>
+              <span class="pill-text">批量编辑</span>
+            </button>
+          </div>
+        </transition>
+
+        <!-- Main FAB Trigger Button (主触发按钮：展开态显示 X，折叠态显示图2铅笔) -->
+        <button
+          class="m3-main-fab"
+          :class="{ expanded: isFabExpanded }"
+          :title="isFabExpanded ? '收起浮动菜单' : '展开操作菜单'"
+          @click="toggleFabExpand"
+        >
+          <transition name="fab-icon-spin" mode="out-in">
+            <X v-if="isFabExpanded" key="close" :size="22" class="fab-icon" />
+            <Pencil v-else key="pencil" :size="20" class="fab-icon" />
+          </transition>
+        </button>
+      </div>
+    </transition>
+
     <!-- Transfer / Copy Dialog (单题与批量通用流转弹窗) -->
     <div v-if="showTransferDialog" class="m3-dialog-scrim" @click.self="showTransferDialog = false">
       <div class="m3-dialog">
@@ -522,11 +572,275 @@
         </div>
       </div>
     </div>
+
+    <!-- ==========================================================================
+         二级抽屉菜单 (Filter & Tag Drawer)
+         从上到下按顺序展示：
+         1. 题目类型检索（单选多选……）
+         2. 通过日期检索
+         3. 通过所有 tag 检索及添加/修改/删除 tag 功能
+         ========================================================================== -->
+    <transition name="drawer-fade">
+      <div v-if="showFilterDrawer" class="m3-drawer-scrim" @click.self="closeFilterDrawer">
+        <transition name="drawer-slide">
+          <div class="m3-filter-drawer">
+            <!-- 抽屉顶部标题栏 -->
+            <div class="drawer-header">
+              <div class="drawer-title-group">
+                <SlidersHorizontal :size="17" class="drawer-title-icon" />
+                <h3 class="drawer-title">高级筛选与标签</h3>
+              </div>
+              <button class="drawer-close-btn" title="关闭抽屉" @click="closeFilterDrawer">
+                <X :size="17" />
+              </button>
+            </div>
+
+            <!-- 抽屉滚动内容主体 -->
+            <div class="drawer-scroll-body">
+              <!-- 1. 题目类型检索（单选多选……） -->
+              <div class="drawer-group">
+                <div class="group-header">
+                  <span class="group-title">题目类型检索</span>
+                  <span v-if="selectedType !== '全部'" class="group-active-tag">{{ selectedType }}</span>
+                </div>
+                <div class="type-chips-grid">
+                  <button
+                    v-for="t in types"
+                    :key="t"
+                    class="m3-filter-chip type-drawer-chip"
+                    :class="{ active: selectedType === t }"
+                    @click="selectType(t)"
+                  >
+                    {{ t }}
+                  </button>
+                </div>
+              </div>
+
+              <div class="drawer-separator"></div>
+
+              <!-- 2. 通过日期检索 -->
+              <div class="drawer-group">
+                <div class="group-header">
+                  <span class="group-title">通过日期检索</span>
+                  <button
+                    v-if="selectedDatePreset !== 'all'"
+                    class="btn-text-action"
+                    @click="clearDateFilter"
+                  >
+                    清除日期
+                  </button>
+                </div>
+
+                <!-- 日期快捷选项 -->
+                <div class="date-preset-chips">
+                  <button
+                    v-for="dp in datePresets"
+                    :key="dp.id"
+                    class="m3-filter-chip date-chip"
+                    :class="{ active: selectedDatePreset === dp.id }"
+                    @click="selectDatePreset(dp.id)"
+                  >
+                    {{ dp.label }}
+                  </button>
+                </div>
+              </div>
+
+              <div class="drawer-separator"></div>
+
+              <!-- 3. 通过所有 tag 检索及增删改功能 -->
+              <div class="drawer-group tags-group">
+                <div class="group-header">
+                  <div class="tags-header-info">
+                    <span class="group-title">通过标签检索 (交集)</span>
+                    <span class="tags-count-hint">共 {{ tagList.length }} 个</span>
+                  </div>
+                  <button
+                    v-if="!isAddingNewTag"
+                    class="btn-add-tag-action"
+                    title="添加新知识点标签"
+                    @click="openAddTagInput"
+                  >
+                    <Plus :size="13" />
+                    <span>添加标签</span>
+                  </button>
+                </div>
+
+                <!-- 标签快速搜索框 -->
+                <div class="tag-search-container">
+                  <Search :size="14" class="tag-search-icon" />
+                  <input
+                    v-model="tagSearchQuery"
+                    type="text"
+                    placeholder="搜索知识点标签..."
+                    class="tag-search-field"
+                  />
+                  <button
+                    v-if="tagSearchQuery"
+                    class="tag-search-clear"
+                    title="清空搜索"
+                    @click="tagSearchQuery = ''"
+                  >
+                    <X :size="12" />
+                  </button>
+                </div>
+
+                <!-- 新建标签输入行 -->
+                <div v-if="isAddingNewTag" class="new-tag-input-row">
+                  <input
+                    ref="newTagInputRef"
+                    v-model="newTagNameInput"
+                    type="text"
+                    placeholder="输入新标签名称..."
+                    class="new-tag-input"
+                    @keydown.enter="submitCreateTag"
+                    @keydown.esc="cancelCreateTag"
+                  />
+                  <div class="new-tag-buttons">
+                    <button class="btn-xs btn-primary" :disabled="!newTagNameInput.trim()" @click="submitCreateTag">
+                      <Check :size="12" />
+                      <span>添加</span>
+                    </button>
+                    <button class="btn-xs btn-ghost" @click="cancelCreateTag">
+                      <X :size="12" />
+                      <span>取消</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 已选交集提示条 -->
+                <div v-if="selectedTags.length > 0" class="selected-tags-toolbar">
+                  <span class="selected-summary-text">已勾选 {{ selectedTags.length }} 个标签交集</span>
+                  <button class="btn-text-action" @click="clearAllTags">全部取消</button>
+                </div>
+
+                <!-- 标签列表 -->
+                <div class="drawer-tags-list">
+                  <div
+                    v-for="t in filteredTagList"
+                    :key="t.name"
+                    class="drawer-tag-item"
+                    :class="{ selected: isTagSelected(t.name) }"
+                  >
+                    <!-- 行内修改标签名称 -->
+                    <div v-if="editingTagName === t.name" class="inline-rename-wrapper">
+                      <input
+                        v-model="editingTagInput"
+                        class="inline-rename-input"
+                        autofocus
+                        @keydown.enter="submitRenameTag(t.name)"
+                        @keydown.esc="cancelRenameTag"
+                      />
+                      <button class="tag-icon-action btn-confirm" title="保存修改" @click="submitRenameTag(t.name)">
+                        <Check :size="13" />
+                      </button>
+                      <button class="tag-icon-action btn-cancel" title="取消" @click="cancelRenameTag">
+                        <X :size="13" />
+                      </button>
+                    </div>
+
+                    <!-- 正常展示标签项 -->
+                    <template v-else>
+                      <div class="drawer-tag-main" @click="toggleTag(t.name)">
+                        <span class="tag-checkbox">
+                          <SquareCheck v-if="isTagSelected(t.name)" :size="15" class="icon-checked" />
+                          <Square v-else :size="15" class="icon-unchecked" />
+                        </span>
+                        <span class="tag-label-name"># {{ t.name }}</span>
+                        <span class="tag-bubble-count">{{ t.count }}</span>
+                      </div>
+
+                      <div class="drawer-tag-actions">
+                        <button
+                          class="tag-action-icon edit-btn"
+                          title="修改标签名称"
+                          @click.stop="startRenameTag(t.name)"
+                        >
+                          <Pencil :size="12" />
+                        </button>
+                        <button
+                          class="tag-action-icon delete-btn"
+                          title="删除标签"
+                          @click.stop="promptDeleteTag(t.name)"
+                        >
+                          <Trash2 :size="12" />
+                        </button>
+                      </div>
+                    </template>
+                  </div>
+
+                  <div v-if="filteredTagList.length === 0" class="drawer-empty-tags">
+                    <span v-if="tagSearchQuery">未检索到含“{{ tagSearchQuery }}”的标签</span>
+                    <span v-else>暂无知识点标签，可点击右上角“添加标签”创建</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 抽屉底部统计与按钮 -->
+            <div class="drawer-footer">
+              <div class="drawer-stats">
+                共匹配 <strong>{{ problems.length }}</strong> 题
+              </div>
+              <div class="drawer-footer-btns">
+                <button
+                  class="btn-drawer-reset"
+                  :disabled="!hasActiveFilters"
+                  @click="resetAllFilters"
+                >
+                  重置筛选
+                </button>
+                <button class="btn-drawer-done" @click="closeFilterDrawer">
+                  完成
+                </button>
+              </div>
+            </div>
+          </div>
+        </transition>
+      </div>
+    </transition>
+
+    <!-- 删除标签二次确认弹窗 -->
+    <div v-if="showDeleteTagDialog" class="m3-dialog-scrim" @click.self="showDeleteTagDialog = false">
+      <div class="m3-dialog">
+        <div class="dialog-icon-wrapper danger-icon">
+          <Trash2 :size="24" />
+        </div>
+        <h3 class="dialog-title">删除标签确认</h3>
+        <div class="dialog-form">
+          <p class="dialog-desc">
+            确定要彻底删除知识点标签 <strong>#{{ tagToDelete }}</strong> 吗？
+          </p>
+          <p class="dialog-hint">
+            此操作将从题库中所有已打此标签的题目中彻底移除该标签，不可撤销。
+          </p>
+        </div>
+        <div class="dialog-actions">
+          <button class="btn-text" @click="showDeleteTagDialog = false">取消</button>
+          <button class="btn-danger" @click="confirmDeleteTag">
+            确认删除
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
+<script lang="ts">
+// 模块级状态持久化记忆：在离开错题库（进入详情、组卷、录入等）再返回时，完整保持用户的学科、选定错题本及视口位姿
+let preservedSubject = '物理';
+let preservedNotebookId = 'all';
+let preservedType = '全部';
+let preservedTags: string[] = [];
+let preservedSort: SortOption = 'date_desc';
+let preservedSearchQuery = '';
+let preservedDateStart = '';
+let preservedDateEnd = '';
+let preservedDatePreset = 'all';
+let preservedScrollTop = 0;
+</script>
+
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, onActivated, onDeactivated } from 'vue';
 import type { Notebook, Problem, TagCount, SortOption } from '../types/problem';
 import ProblemCard from '../components/ProblemCard.vue';
 import {
@@ -539,6 +853,11 @@ import {
   apiMoveOrCopyProblems,
   apiBatchDeleteProblems,
   apiBatchAddTag,
+  apiCreateTag,
+  apiRenameTag,
+  apiDeleteTag,
+  apiSyncCloud,
+  apiSyncAllMirrors,
 } from '../utils/api';
 import {
   Search,
@@ -555,10 +874,18 @@ import {
   Printer,
   Tag,
   ListChecks,
+  SlidersHorizontal,
+  Calendar,
+  Pencil,
+  SquareCheck,
+  Square,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
   printCart: Problem[];
+  targetProblem?: Problem | null;
+  targetSubject?: string | null;
+  targetNotebookId?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -566,7 +893,34 @@ const emit = defineEmits<{
   (e: 'toggleCart', prob: Problem): void;
   (e: 'removeFromCart', uuid: string): void;
   (e: 'notify', msg: string): void;
+  (e: 'editProblem', prob: Problem, context?: { subject?: string; notebookId?: string }): void;
+  (e: 'clearTarget'): void;
 }>();
+
+const scrollContainerRef = ref<HTMLElement | null>(null);
+
+function handleOpenDetail(prob: Problem) {
+  emit('editProblem', prob, {
+    subject: selectedSubject.value,
+    notebookId: selectedNotebookId.value,
+  });
+}
+
+function locateProblemCard(uuid: string, retries = 8) {
+  nextTick(() => {
+    const el = document.getElementById(`problem-card-${uuid}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('locate-pulse-highlight');
+      setTimeout(() => {
+        el.classList.remove('locate-pulse-highlight');
+        emit('clearTarget');
+      }, 2200);
+    } else if (retries > 0) {
+      setTimeout(() => locateProblemCard(uuid, retries - 1), 60);
+    }
+  });
+}
 
 const subjects = ['数学', '物理', '化学', '生物'];
 const types = ['全部', '单选', '多选', '填空', '简答'];
@@ -595,6 +949,46 @@ const loading = ref(false);
 const isBatchMode = ref(false);
 const selectedUuids = ref<string[]>([]);
 
+// 右下角 M3 浮动工具栏状态 (默认展开)
+const isFabExpanded = ref(true);
+const isManualSyncing = ref(false);
+
+function toggleFabExpand() {
+  isFabExpanded.value = !isFabExpanded.value;
+}
+
+function startBatchModeFromFab() {
+  isFabExpanded.value = false;
+  isBatchMode.value = true;
+}
+
+async function triggerManualSync() {
+  if (isManualSyncing.value) return;
+  isManualSyncing.value = true;
+
+  try {
+    const isLoggedIn = localStorage.getItem('naosu_is_logged_in') === 'true';
+    if (isLoggedIn) {
+      emit('notify', '正在执行双向云端同步...');
+      const res = await apiSyncCloud((msg) => emit('notify', msg));
+      await loadData();
+      emit('notify', `同步完成！已拉取 ${res.pulledProblems} 题，推送 ${res.pushedProblems} 题，上传 ${res.uploadedImages} 张图片`);
+    } else {
+      emit('notify', '正在刷新本地题库数据与镜像...');
+      await Promise.all([
+        loadData(),
+        apiSyncAllMirrors(),
+      ]);
+      emit('notify', '本地题库与 HTML 镜像已刷新 (登录云账号可开启多端双向云同步)');
+    }
+  } catch (err: any) {
+    console.error('Sync failed:', err);
+    emit('notify', '同步失败: ' + (err?.message || err));
+  } finally {
+    isManualSyncing.value = false;
+  }
+}
+
 // 跨错题本流转弹窗状态
 const showTransferDialog = ref(false);
 const transferTargetNotebookId = ref('');
@@ -618,6 +1012,58 @@ const newNbSubject = ref('物理');
 
 // 删除错题确认弹窗状态
 const problemToDelete = ref<Problem | null>(null);
+
+// 二级抽屉筛选与标签管理状态
+const showFilterDrawer = ref(false);
+const filterDateStart = ref('');
+const filterDateEnd = ref('');
+const selectedDatePreset = ref<'all' | 'today' | '7days' | '30days' | 'month'>('all');
+const tagSearchQuery = ref('');
+const isAddingNewTag = ref(false);
+const newTagNameInput = ref('');
+const newTagInputRef = ref<HTMLInputElement | null>(null);
+const editingTagName = ref<string | null>(null);
+const editingTagInput = ref('');
+const tagToDelete = ref<string | null>(null);
+const showDeleteTagDialog = ref(false);
+
+const datePresets = [
+  { id: 'all', label: '全部时间' },
+  { id: 'today', label: '今天' },
+  { id: '7days', label: '最近7天' },
+  { id: '30days', label: '最近30天' },
+  { id: 'month', label: '本月' },
+];
+
+const hasActiveFilters = computed(() => {
+  return (
+    selectedType.value !== '全部' ||
+    selectedTags.value.length > 0 ||
+    selectedDatePreset.value !== 'all'
+  );
+});
+
+const activeFilterCount = computed(() => {
+  let count = 0;
+  if (selectedType.value !== '全部') count++;
+  if (selectedDatePreset.value !== 'all') count++;
+  count += selectedTags.value.length;
+  return count;
+});
+
+const dateFilterDisplay = computed(() => {
+  if (selectedDatePreset.value === 'today') return '今天';
+  if (selectedDatePreset.value === '7days') return '最近7天';
+  if (selectedDatePreset.value === '30days') return '最近30天';
+  if (selectedDatePreset.value === 'month') return '本月';
+  return '';
+});
+
+const filteredTagList = computed(() => {
+  const kw = tagSearchQuery.value.trim().toLowerCase();
+  if (!kw) return tagList.value;
+  return tagList.value.filter((t) => t.name.toLowerCase().includes(kw));
+});
 
 const currentSubjectNotebooks = computed(() => {
   return notebooks.value.filter((nb) => nb.subject === selectedSubject.value);
@@ -670,12 +1116,16 @@ function toggleBatchMode() {
   isBatchMode.value = !isBatchMode.value;
   if (!isBatchMode.value) {
     selectedUuids.value = [];
+    isFabExpanded.value = true;
+  } else {
+    isFabExpanded.value = false;
   }
 }
 
 function exitBatchMode() {
   isBatchMode.value = false;
   selectedUuids.value = [];
+  isFabExpanded.value = true;
 }
 
 function toggleSelectUuid(uuid: string) {
@@ -795,8 +1245,10 @@ async function confirmBatchDelete() {
   }
 }
 
-async function loadData() {
-  loading.value = true;
+async function loadData(silent = false) {
+  if (!silent && problems.value.length === 0) {
+    loading.value = true;
+  }
   try {
     const nbIdParam = selectedNotebookId.value === 'all' ? undefined : selectedNotebookId.value;
 
@@ -808,7 +1260,9 @@ async function loadData() {
         selectedType.value === '全部' ? undefined : selectedType.value,
         searchQuery.value || undefined,
         selectedTags.value.length > 0 ? selectedTags.value : undefined,
-        selectedSort.value
+        selectedSort.value,
+        filterDateStart.value || undefined,
+        filterDateEnd.value || undefined
       ),
       apiGetTags(nbIdParam, selectedSubject.value),
     ]);
@@ -821,13 +1275,154 @@ async function loadData() {
     selectedUuids.value = selectedUuids.value.filter((u) => probList.some((p) => p.uuid === u));
 
     // 统计当前学科题目数量
-    if (selectedNotebookId.value === 'all' && !searchQuery.value && selectedType.value === '全部' && selectedTags.value.length === 0) {
+    if (selectedNotebookId.value === 'all' && !searchQuery.value && selectedType.value === '全部' && selectedTags.value.length === 0 && !filterDateStart.value && !filterDateEnd.value) {
       subjectCounts.value[selectedSubject.value] = probList.length;
     }
   } catch (e: any) {
     emit('notify', '读取数据失败: ' + (e?.message || e));
   } finally {
     loading.value = false;
+  }
+}
+
+function openFilterDrawer() {
+  showFilterDrawer.value = true;
+}
+
+function closeFilterDrawer() {
+  showFilterDrawer.value = false;
+  isAddingNewTag.value = false;
+  editingTagName.value = null;
+}
+
+function selectDatePreset(presetId: string) {
+  selectedDatePreset.value = presetId as any;
+  const now = new Date();
+  const formatYMD = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  if (presetId === 'all') {
+    filterDateStart.value = '';
+    filterDateEnd.value = '';
+  } else if (presetId === 'today') {
+    const todayStr = formatYMD(now);
+    filterDateStart.value = todayStr;
+    filterDateEnd.value = todayStr;
+  } else if (presetId === '7days') {
+    const past = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    filterDateStart.value = formatYMD(past);
+    filterDateEnd.value = formatYMD(now);
+  } else if (presetId === '30days') {
+    const past = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    filterDateStart.value = formatYMD(past);
+    filterDateEnd.value = formatYMD(now);
+  } else if (presetId === 'month') {
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    filterDateStart.value = formatYMD(firstDay);
+    filterDateEnd.value = formatYMD(now);
+  }
+  loadData();
+}
+
+function clearDateFilter() {
+  selectedDatePreset.value = 'all';
+  filterDateStart.value = '';
+  filterDateEnd.value = '';
+  loadData();
+}
+
+function resetAllFilters() {
+  selectedType.value = '全部';
+  selectedTags.value = [];
+  selectedDatePreset.value = 'all';
+  filterDateStart.value = '';
+  filterDateEnd.value = '';
+  loadData();
+}
+
+function openAddTagInput() {
+  isAddingNewTag.value = true;
+  newTagNameInput.value = '';
+  nextTick(() => {
+    newTagInputRef.value?.focus();
+  });
+}
+
+function cancelCreateTag() {
+  newTagNameInput.value = '';
+  isAddingNewTag.value = false;
+}
+
+async function submitCreateTag() {
+  const name = newTagNameInput.value.trim();
+  if (!name) return;
+  try {
+    await apiCreateTag(name);
+    newTagNameInput.value = '';
+    isAddingNewTag.value = false;
+    emit('notify', `已创建新标签 “${name}”`);
+    const nbIdParam = selectedNotebookId.value === 'all' ? undefined : selectedNotebookId.value;
+    tagList.value = await apiGetTags(nbIdParam, selectedSubject.value);
+  } catch (e: any) {
+    emit('notify', '创建标签失败: ' + (e?.message || e));
+  }
+}
+
+function startRenameTag(name: string) {
+  editingTagName.value = name;
+  editingTagInput.value = name;
+}
+
+function cancelRenameTag() {
+  editingTagName.value = null;
+  editingTagInput.value = '';
+}
+
+async function submitRenameTag(oldName: string) {
+  const newName = editingTagInput.value.trim();
+  if (!newName) {
+    emit('notify', '标签名称不能为空');
+    return;
+  }
+  if (newName === oldName) {
+    cancelRenameTag();
+    return;
+  }
+  try {
+    const updatedCount = await apiRenameTag(oldName, newName);
+    const idx = selectedTags.value.indexOf(oldName);
+    if (idx >= 0) {
+      selectedTags.value[idx] = newName;
+    }
+    cancelRenameTag();
+    emit('notify', `已将标签 “${oldName}” 重命名为 “${newName}”，同步更新 ${updatedCount} 道题目`);
+    await loadData();
+  } catch (e: any) {
+    emit('notify', '修改标签失败: ' + (e?.message || e));
+  }
+}
+
+function promptDeleteTag(name: string) {
+  tagToDelete.value = name;
+  showDeleteTagDialog.value = true;
+}
+
+async function confirmDeleteTag() {
+  if (!tagToDelete.value) return;
+  const name = tagToDelete.value;
+  try {
+    const removedCount = await apiDeleteTag(name);
+    selectedTags.value = selectedTags.value.filter((t) => t !== name);
+    showDeleteTagDialog.value = false;
+    tagToDelete.value = null;
+    emit('notify', `已删除标签 “${name}”，从 ${removedCount} 道题目中移除`);
+    await loadData();
+  } catch (e: any) {
+    emit('notify', '删除标签失败: ' + (e?.message || e));
   }
 }
 
@@ -968,9 +1563,122 @@ async function confirmDeleteProblem() {
   }
 }
 
-onMounted(() => {
-  loadData();
-  refreshSubjectStats();
+onMounted(async () => {
+  // 恢复或者采用目标学科与错题本设置
+  if (props.targetSubject) {
+    selectedSubject.value = props.targetSubject;
+  } else {
+    selectedSubject.value = preservedSubject;
+  }
+
+  if (props.targetNotebookId !== undefined && props.targetNotebookId !== null) {
+    selectedNotebookId.value = props.targetNotebookId;
+  } else {
+    selectedNotebookId.value = preservedNotebookId;
+  }
+
+  selectedType.value = preservedType;
+  selectedTags.value = [...preservedTags];
+  selectedSort.value = preservedSort;
+  searchQuery.value = preservedSearchQuery;
+  filterDateStart.value = preservedDateStart;
+  filterDateEnd.value = preservedDateEnd;
+  selectedDatePreset.value = preservedDatePreset as any;
+
+  window.addEventListener('keydown', onGlobalKeyDown);
+
+  await loadData();
+  await refreshSubjectStats();
+
+  // 若从详情页返回并带有目标题目，定位并施加聚焦脉冲高亮
+  if (props.targetProblem) {
+    const targetUuid = props.targetProblem.uuid;
+    const exists = problems.value.some((p) => p.uuid === targetUuid);
+    if (!exists) {
+      // 若当前过滤条件导致未查到该题，自动适配该题的所属学科与所属错题本并重载
+      selectedSubject.value = props.targetProblem.subject;
+      if (selectedNotebookId.value !== props.targetProblem.notebook_id && selectedNotebookId.value !== 'all') {
+        selectedNotebookId.value = props.targetProblem.notebook_id;
+      }
+      searchQuery.value = '';
+      selectedTags.value = [];
+      selectedType.value = '全部';
+      filterDateStart.value = '';
+      filterDateEnd.value = '';
+      selectedDatePreset.value = 'all';
+      await loadData();
+    }
+    locateProblemCard(targetUuid);
+  } else if (scrollContainerRef.value && preservedScrollTop > 0) {
+    scrollContainerRef.value.scrollTop = preservedScrollTop;
+  }
+});
+
+function onGlobalKeyDown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    if (showFilterDrawer.value) {
+      closeFilterDrawer();
+    }
+    if (showDeleteTagDialog.value) {
+      showDeleteTagDialog.value = false;
+    }
+  }
+}
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onGlobalKeyDown);
+  preservedSubject = selectedSubject.value;
+  preservedNotebookId = selectedNotebookId.value;
+  preservedType = selectedType.value;
+  preservedTags = [...selectedTags.value];
+  preservedSort = selectedSort.value;
+  preservedSearchQuery = searchQuery.value;
+  preservedDateStart = filterDateStart.value;
+  preservedDateEnd = filterDateEnd.value;
+  preservedDatePreset = selectedDatePreset.value;
+  if (scrollContainerRef.value) {
+    preservedScrollTop = scrollContainerRef.value.scrollTop;
+  }
+});
+
+onActivated(async () => {
+  window.addEventListener('keydown', onGlobalKeyDown);
+
+  // 若从详情页返回并带有目标题目，定位并施加聚焦脉冲高亮
+  if (props.targetProblem) {
+    const targetUuid = props.targetProblem.uuid;
+    const idx = problems.value.findIndex((p) => p.uuid === targetUuid);
+    if (idx >= 0) {
+      problems.value[idx] = { ...props.targetProblem };
+    } else {
+      await loadData(true);
+    }
+    locateProblemCard(targetUuid);
+  } else {
+    // 静默后台比对同步
+    await loadData(true);
+  }
+  await refreshSubjectStats();
+
+  if (scrollContainerRef.value && preservedScrollTop > 0) {
+    scrollContainerRef.value.scrollTop = preservedScrollTop;
+  }
+});
+
+onDeactivated(() => {
+  window.removeEventListener('keydown', onGlobalKeyDown);
+  preservedSubject = selectedSubject.value;
+  preservedNotebookId = selectedNotebookId.value;
+  preservedType = selectedType.value;
+  preservedTags = [...selectedTags.value];
+  preservedSort = selectedSort.value;
+  preservedSearchQuery = searchQuery.value;
+  preservedDateStart = filterDateStart.value;
+  preservedDateEnd = filterDateEnd.value;
+  preservedDatePreset = selectedDatePreset.value;
+  if (scrollContainerRef.value) {
+    preservedScrollTop = scrollContainerRef.value.scrollTop;
+  }
 });
 </script>
 
@@ -993,9 +1701,16 @@ onMounted(() => {
   justify-content: space-between;
   gap: 16px;
   flex-shrink: 0;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.top-actions {
+  -webkit-app-region: no-drag;
 }
 
 .m3-search-box {
+  -webkit-app-region: no-drag;
   flex: 1;
   max-width: 560px;
   height: 42px;
@@ -1182,12 +1897,25 @@ onMounted(() => {
   gap: 10px;
 }
 
+.notebooks-section {
+  justify-content: space-between;
+}
+
 .chips-scroll-container {
   display: flex;
   align-items: center;
   gap: 8px;
   overflow-x: auto;
   padding-bottom: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.notebooks-right-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 /* 标准统一 M3 Filter Chip (高度 30px, 圆角 8px sm) */
@@ -1221,6 +1949,28 @@ onMounted(() => {
   font-weight: 600;
 }
 
+.filter-btn-chip {
+  position: relative;
+}
+.filter-btn-chip.active {
+  background-color: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  border-color: var(--md-sys-color-primary);
+  font-weight: 600;
+}
+.filter-count-badge {
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  border-radius: var(--md-shape-corner-full);
+  font-size: 10px;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  text-align: center;
+  font-weight: 700;
+  padding: 0 4px;
+}
+
 /* M3 Action Chip (用于局部的 +新建错题本) */
 .m3-action-chip {
   height: 30px;
@@ -1244,69 +1994,12 @@ onMounted(() => {
   border-color: var(--md-sys-color-primary);
 }
 
-/* Secondary Filters (Tag + Type + Sort + Stats) */
+/* Secondary Filters (Sort + Stats + Active Filter Badges) */
 .secondary-filters-section {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex-wrap: nowrap;
-}
-
-.tags-filter-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-  min-width: 0;
-}
-
-.tag-filter-chip.active {
-  background-color: var(--md-sys-color-primary);
-  color: var(--md-sys-color-on-primary);
-  border-color: var(--md-sys-color-primary);
-}
-
-.hash-symbol {
-  opacity: 0.5;
-  font-weight: 700;
-}
-
-.tag-counter {
-  font-size: 10px;
-  opacity: 0.8;
-  padding: 0 4px;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.08);
-}
-.tag-filter-chip.active .tag-counter {
-  background: rgba(255, 255, 255, 0.25);
-  color: var(--md-sys-color-on-primary);
-}
-
-.btn-clear-tags-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: var(--md-shape-corner-full);
-  background-color: var(--md-sys-color-error-container);
-  color: var(--md-sys-color-error);
-  font-size: 11px;
-  font-weight: 600;
-  flex-shrink: 0;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.btn-clear-tags-chip:hover {
-  filter: brightness(0.95);
-}
-
-.empty-tag-note {
-  font-size: 11px;
-  color: var(--md-sys-color-outline);
-  font-style: italic;
-  white-space: nowrap;
+  flex-wrap: wrap;
 }
 
 .m3-vertical-divider {
@@ -1316,15 +2009,56 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-.type-chips-group {
+.active-filters-bar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.type-filter-chip {
-  padding: 0 10px;
+.active-filter-badge {
+  height: 26px;
+  padding: 0 8px 0 10px;
+  border-radius: var(--md-shape-corner-full);
+  background-color: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.active-filter-badge:hover {
+  background-color: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-error);
+  border-color: transparent;
+}
+.active-filter-badge.tag-badge {
+  background-color: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  border-color: transparent;
+}
+.active-filter-badge.tag-badge:hover {
+  background-color: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-error);
+}
+
+.btn-clear-all-filters {
+  background: transparent;
+  border: none;
+  color: var(--md-sys-color-primary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--md-shape-corner-sm);
+  transition: background-color 0.15s;
+}
+.btn-clear-all-filters:hover {
+  background-color: var(--md-sys-color-surface-container);
+  text-decoration: underline;
 }
 
 /* ==========================================================================
@@ -1472,7 +2206,7 @@ onMounted(() => {
 .problems-scroll-area {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 28px 40px 28px;
+  padding: 16px 28px 96px 28px;
 }
 
 .cards-grid {
@@ -1872,6 +2606,165 @@ onMounted(() => {
   transform: translateY(30px) scale(0.95);
 }
 
+/* ==========================================================================
+   M3 Floating Action Speed Dial (右下角悬浮工具菜单)
+   遵循 Google Material 3 悬浮菜单规范 (图1/图2)
+   ========================================================================== */
+.m3-speed-dial-wrapper {
+  position: fixed;
+  right: 28px;
+  bottom: 28px;
+  z-index: 95;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.m3-speed-dial-wrapper > * {
+  pointer-events: auto;
+}
+
+/* Speed Dial Actions Container */
+.speed-dial-menu {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+/* Speed Dial Action Pill (图1样式) */
+.speed-dial-action-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px 10px 12px;
+  border-radius: 9999px;
+  background-color: var(--md-sys-color-secondary-container, #e8def8);
+  color: var(--md-sys-color-on-secondary-container, #1d192b);
+  border: 1px solid var(--md-sys-color-outline-variant, rgba(0, 0, 0, 0.08));
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.08);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+  user-select: none;
+}
+
+.speed-dial-action-pill:hover {
+  background-color: var(--md-sys-color-primary-container, #eaddff);
+  color: var(--md-sys-color-on-primary-container, #21005d);
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16), 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.speed-dial-action-pill:active {
+  transform: translateY(0) scale(0.97);
+}
+
+.speed-dial-action-pill.is-syncing {
+  opacity: 0.85;
+  cursor: wait;
+}
+
+.spin-anim {
+  animation: spin 0.8s linear infinite;
+}
+
+.pill-icon-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background-color: var(--md-sys-color-surface-container-highest, rgba(29, 25, 43, 0.12));
+  color: inherit;
+  transition: all 0.2s ease;
+}
+
+.speed-dial-action-pill:hover .pill-icon-circle {
+  background-color: var(--md-sys-color-primary, #6750a4);
+  color: var(--md-sys-color-on-primary, #ffffff);
+}
+
+/* Main FAB Button (图1/图2样式) */
+.m3-main-fab {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background-color: var(--md-sys-color-primary, #6750a4);
+  color: var(--md-sys-color-on-primary, #ffffff);
+  border: none;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18), 0 1px 4px rgba(0, 0, 0, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+  outline: none;
+}
+
+.m3-main-fab:hover {
+  transform: scale(1.06);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.m3-main-fab:active {
+  transform: scale(0.95);
+}
+
+.m3-main-fab.expanded {
+  border-radius: 50%;
+  background-color: var(--md-sys-color-primary-container, #eaddff);
+  color: var(--md-sys-color-on-primary-container, #21005d);
+}
+
+/* Speed Dial Transitions */
+.m3-fab-pop-enter-active {
+  transition: all 0.18s cubic-bezier(0.05, 0.7, 0.1, 1);
+}
+.m3-fab-pop-leave-active {
+  transition: all 0.12s cubic-bezier(0.4, 0, 1, 1);
+}
+
+.m3-fab-pop-enter-from,
+.m3-fab-pop-leave-to {
+  opacity: 0;
+  transform: scale(0.8) translateY(14px);
+}
+
+.m3-speed-dial-pills-enter-active {
+  transition: all 0.16s cubic-bezier(0.05, 0.7, 0.1, 1);
+}
+.m3-speed-dial-pills-leave-active {
+  transition: all 0.1s cubic-bezier(0.4, 0, 1, 1);
+}
+
+.m3-speed-dial-pills-enter-from,
+.m3-speed-dial-pills-leave-to {
+  opacity: 0;
+  transform: translateY(10px) scale(0.92);
+}
+
+.fab-icon-spin-enter-active,
+.fab-icon-spin-leave-active {
+  transition: all 0.18s ease;
+}
+
+.fab-icon-spin-enter-from {
+  opacity: 0;
+  transform: rotate(-90deg) scale(0.6);
+}
+
+.fab-icon-spin-leave-to {
+  opacity: 0;
+  transform: rotate(90deg) scale(0.6);
+}
+
 /* Segmented control in transfer dialog */
 .m3-segmented-control {
   display: flex;
@@ -1952,5 +2845,497 @@ onMounted(() => {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* ==========================================================================
+   Secondary Filter Drawer (M3 侧边抽屉)
+   ========================================================================== */
+.m3-drawer-scrim {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.4);
+  z-index: 950;
+  backdrop-filter: blur(3px);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.m3-filter-drawer {
+  width: 400px;
+  max-width: 92vw;
+  height: 100%;
+  background-color: var(--md-sys-color-surface);
+  box-shadow: var(--md-elevation-3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 951;
+}
+
+/* 抽屉头部 */
+.drawer-header {
+  height: 56px;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  background-color: var(--md-sys-color-surface-container-low);
+  flex-shrink: 0;
+}
+.drawer-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.drawer-title-icon {
+  color: var(--md-sys-color-primary);
+}
+.drawer-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+.drawer-close-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--md-shape-corner-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.drawer-close-btn:hover {
+  background-color: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+}
+
+/* 抽屉可滚动内容 */
+.drawer-scroll-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.drawer-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.group-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--md-sys-color-on-surface);
+  letter-spacing: 0.2px;
+}
+.group-active-tag {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--md-sys-color-primary);
+  background-color: var(--md-sys-color-primary-container);
+  padding: 2px 8px;
+  border-radius: var(--md-shape-corner-full);
+}
+.btn-text-action {
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  color: var(--md-sys-color-primary);
+  cursor: pointer;
+  padding: 2px 4px;
+  font-weight: 500;
+}
+.btn-text-action:hover {
+  text-decoration: underline;
+}
+
+.drawer-separator {
+  height: 1px;
+  background-color: var(--md-sys-color-outline-variant);
+  opacity: 0.7;
+}
+
+/* 1. 题目类型网格 */
+.type-chips-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.type-drawer-chip {
+  flex: 1;
+  min-width: 60px;
+  justify-content: center;
+  height: 32px;
+  font-size: 12px;
+}
+
+/* 2. 日期检索 */
+.date-preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.date-chip {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 11px;
+}
+
+/* 3. 标签检索 & 增删改 */
+.tags-header-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tags-count-hint {
+  font-size: 11px;
+  color: var(--md-sys-color-outline);
+}
+.btn-add-tag-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background-color: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  border: none;
+  padding: 4px 10px;
+  border-radius: var(--md-shape-corner-full);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-add-tag-action:hover {
+  filter: brightness(0.95);
+}
+
+.tag-search-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: var(--md-shape-corner-full);
+  background-color: var(--md-sys-color-surface-container);
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+.tag-search-container:focus-within {
+  border-color: var(--md-sys-color-primary);
+  background-color: var(--md-sys-color-surface);
+}
+.tag-search-icon {
+  color: var(--md-sys-color-outline);
+}
+.tag-search-field {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface);
+  outline: none;
+}
+.tag-search-clear {
+  background: transparent;
+  border: none;
+  color: var(--md-sys-color-outline);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+/* 新建标签输入行 */
+.new-tag-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: var(--md-sys-color-surface-container-high);
+  padding: 6px 10px;
+  border-radius: var(--md-shape-corner-md);
+  border: 1px solid var(--md-sys-color-primary);
+}
+.new-tag-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface);
+  outline: none;
+}
+.new-tag-buttons {
+  display: flex;
+  gap: 4px;
+}
+.btn-xs {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  border: none;
+}
+.btn-xs.btn-primary {
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+.btn-xs.btn-ghost {
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.btn-xs.btn-ghost:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.selected-tags-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px;
+  background-color: var(--md-sys-color-surface-container-low);
+  border-radius: var(--md-shape-corner-sm);
+}
+.selected-summary-text {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--md-sys-color-primary);
+}
+
+.drawer-tags-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.drawer-tag-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-radius: var(--md-shape-corner-sm);
+  background-color: var(--md-sys-color-surface-container-low);
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+.drawer-tag-item:hover {
+  background-color: var(--md-sys-color-surface-container-high);
+}
+.drawer-tag-item.selected {
+  background-color: var(--md-sys-color-primary-container);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+.drawer-tag-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  user-select: none;
+}
+.tag-checkbox {
+  display: flex;
+  align-items: center;
+  color: var(--md-sys-color-outline);
+}
+.icon-checked {
+  color: var(--md-sys-color-primary);
+}
+.tag-label-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drawer-tag-item.selected .tag-label-name {
+  color: var(--md-sys-color-on-primary-container);
+  font-weight: 600;
+}
+.tag-bubble-count {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--md-shape-corner-full);
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--md-sys-color-on-surface-variant);
+}
+.drawer-tag-item.selected .tag-bubble-count {
+  background: rgba(255, 255, 255, 0.4);
+  color: var(--md-sys-color-on-primary-container);
+}
+
+.drawer-tag-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.drawer-tag-item:hover .drawer-tag-actions {
+  opacity: 1;
+}
+.tag-action-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.tag-action-icon:hover {
+  background: rgba(0, 0, 0, 0.1);
+  color: var(--md-sys-color-on-surface);
+}
+.tag-action-icon.delete-btn:hover {
+  background-color: var(--md-sys-color-error-container);
+  color: var(--md-sys-color-error);
+}
+
+.inline-rename-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+.inline-rename-input {
+  flex: 1;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 4px;
+  border: 1px solid var(--md-sys-color-primary);
+  background: var(--md-sys-color-surface);
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface);
+  outline: none;
+}
+.tag-icon-action {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.tag-icon-action.btn-confirm {
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+.tag-icon-action.btn-cancel {
+  background: transparent;
+  color: var(--md-sys-color-outline);
+}
+
+.drawer-empty-tags {
+  padding: 24px 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--md-sys-color-outline);
+}
+
+/* 抽屉底部 */
+.drawer-footer {
+  height: 60px;
+  padding: 0 20px;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  background-color: var(--md-sys-color-surface-container-low);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.drawer-stats {
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.drawer-stats strong {
+  color: var(--md-sys-color-primary);
+  font-size: 14px;
+}
+.drawer-footer-btns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn-drawer-reset {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: var(--md-shape-corner-full);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-drawer-reset:hover:not(:disabled) {
+  background-color: var(--md-sys-color-surface-container-high);
+}
+.btn-drawer-reset:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.btn-drawer-done {
+  height: 34px;
+  padding: 0 18px;
+  border-radius: var(--md-shape-corner-full);
+  border: none;
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-drawer-done:hover {
+  filter: brightness(1.08);
+}
+
+/* 抽屉动画 */
+.drawer-fade-enter-active,
+.drawer-fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+.drawer-fade-enter-from,
+.drawer-fade-leave-to {
+  opacity: 0;
+}
+
+.drawer-slide-enter-active {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.drawer-slide-leave-active {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 1, 1);
+}
+.drawer-slide-enter-from,
+.drawer-slide-leave-to {
+  transform: translateX(100%);
 }
 </style>
