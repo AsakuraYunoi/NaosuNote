@@ -85,7 +85,7 @@ where
             }
         };
 
-        let secret = parts
+        let secret_opt = parts
             .extensions
             .get::<crate::config::AppConfig>()
             .map(|c| c.server.jwt_secret.clone())
@@ -95,7 +95,15 @@ where
                     .get::<std::sync::Arc<crate::AppState>>()
                     .map(|s| s.config.server.jwt_secret.clone())
             })
-            .unwrap_or_else(|| "naosu_super_secret_jwt_key_2026_xyz".to_string());
+            .filter(|s| !s.trim().is_empty());
+
+        let secret = match secret_opt {
+            Some(s) => s,
+            None => {
+                let body = Json(ApiResponse::<()>::err(500, "服务端未配置有效的身份凭证密钥 (jwt_secret)"));
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, body).into_response());
+            }
+        };
 
         match verify_jwt_token(token, &secret) {
             Ok(claims) => Ok(AuthUser {

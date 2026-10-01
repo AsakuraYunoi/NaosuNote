@@ -1,6 +1,6 @@
 # NaosuNote 架构设计与系统技术手册 (Architecture & Technical Manual)
 
-> **版本**：v0.2.1  
+> **版本**：beta0.2.2  
 > **核心架构**：Tauri v2 + Vue 3 (Composition API) + TypeScript + Rust + SQLite (rusqlite) + KaTeX + Material Design 3  
 > **支持终端**：macOS (Apple Silicon & Intel x64), Windows (x64 & ARM64), Android (Universal APK & Per-ABI APK), iOS / Web 浏览器预览  
 > **适用对象**：系统维护者、跨端开发团队及学术研发人员
@@ -376,9 +376,9 @@ NaosuNote 彻底放弃了质量低劣的网页截图式 Canvas 打印方案，�
 
 | 目标平台 | 打包指令 | 底层脚本路径 | 输出目标产物 |
 | :--- | :--- | :--- | :--- |
-| **Android** | `npm run package:android` 或 `pnpm run package:android` | `platforms/android/scripts/package-apk.sh` | `release-portable/NaosuNote_0.2.1_app-universal-release-unsigned.apk` |
-| **macOS** | `npm run package:macos` 或 `pnpm run package:macos` | `platforms/macos/scripts/package-app.sh` | `release-portable/NaosuNote_0.2.1.dmg` 与 `NaosuNote.app` |
-| **Windows** | `npm run package:windows` 或 `pnpm run package:windows` | `platforms/windows/scripts/package-portable.ps1` | `release-portable/NaosuNote_0.2.1_x64.exe` 与免安装 Zip |
+| **Android** | `npm run package:android` 或 `pnpm run package:android` | `platforms/android/scripts/package-apk.sh` | `release-portable/NaosuNote_0.2.2_app-universal-release-unsigned.apk` |
+| **macOS** | `npm run package:macos` 或 `pnpm run package:macos` | `platforms/macos/scripts/package-app.sh` | `release-portable/NaosuNote_0.2.2.dmg` 与 `NaosuNote.app` |
+| **Windows** | `npm run package:windows` 或 `pnpm run package:windows` | `platforms/windows/scripts/package-portable.ps1` | `release-portable/NaosuNote_0.2.2_x64.exe` 与免安装 Zip |
 
 ### 5.2 Android 打包高级参数支持
 

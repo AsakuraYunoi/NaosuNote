@@ -65,7 +65,7 @@ impl DbManager {
             [],
         )?;
 
-        // 容错：旧表可能没有某些列，通过 ALTER TABLE 增量补充
+        // 兼容旧版本数据库字段
         let _ = conn.execute("ALTER TABLE problems ADD COLUMN notebook_id TEXT;", []);
         let _ = conn.execute("ALTER TABLE problems ADD COLUMN tags TEXT DEFAULT '[]';", []);
         let _ = conn.execute("ALTER TABLE problems ADD COLUMN answer_markdown TEXT DEFAULT '';", []);
@@ -99,7 +99,7 @@ impl DbManager {
             [],
         )?;
 
-        // 确保数理化生各学科均有默认错题本，并自动自愈孤儿题目
+        // 初始化基础学科错题本
         self.ensure_default_notebooks_with_conn(&conn)?;
 
         Ok(())
@@ -131,7 +131,7 @@ impl DbManager {
             }
         }
 
-        // 自动自愈孤儿错题：将 notebook_id 为空或无效且未删除的错题，自动绑定到该学科最早创建的未删除错题本中
+        // 未关联有效错题本的题目归入该学科最早创建的错题本
         let _ = conn.execute(
             "UPDATE problems 
              SET notebook_id = (
@@ -145,7 +145,7 @@ impl DbManager {
             [],
         );
 
-        // 清理数据库中历史遗留的 raw_html 顶部注释，确保数据库存储纯净的 <div class="naosu-problem">
+        // 清理历史 HTML 顶部冗余注释
         if let Ok(mut stmt) = conn.prepare("SELECT uuid, raw_html FROM problems WHERE raw_html LIKE '<!--%'") {
             if let Ok(rows) = stmt.query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -246,7 +246,7 @@ impl DbManager {
 
     pub fn upsert_notebook(&self, id: &str, name: &str, subject: &str) -> Result<Notebook> {
         let conn = self.get_connection()?;
-        // 检查是否有重名但不同 id 的未删除错题本
+        // 同名冲突时合并转移题目至目标 ID
         let existing_id_with_name: Option<String> = conn
             .query_row(
                 "SELECT id FROM notebooks WHERE name = ?1 AND is_deleted = 0",
@@ -297,7 +297,7 @@ impl DbManager {
 
     pub fn delete_notebook(&self, id: &str) -> Result<()> {
         let conn = self.get_connection()?;
-        // 软删除错题本，并将关联错题也标记为软删除以支持云端同步
+        // 标记删除错题本及关联题目
         conn.execute(
             "UPDATE problems SET is_deleted = 1, updated_at = CURRENT_TIMESTAMP WHERE notebook_id = ?1",
             params![id],

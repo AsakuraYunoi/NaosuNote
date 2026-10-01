@@ -1160,7 +1160,7 @@ export async function apiSyncCloud(
 
   onProgress?.('正在校验云端凭证...');
 
-  // 1. Pull 阶段：拉取云端新增/修改数据
+  // 1. 拉取云端数据
   onProgress?.('正在拉取云端错题增量...');
   const lastSyncTimestamp = Number(localStorage.getItem('naosu_last_sync_timestamp') || '0');
 
@@ -1180,11 +1180,11 @@ export async function apiSyncCloud(
 
   const { notebooks: remoteNotebooks, problems: remoteProblems, tags: _remoteTags, server_timestamp } = pullJson.data;
 
-  // 获取本地已有错题本与错题进行精确比对
+  // 本地与云端数据比对
   const localProblems = await apiGetProblemsForSync();
   const localProblemsMap = new Map<string, Problem>(localProblems.map((p) => [p.uuid, p]));
 
-  // 将远程错题本增量合并到本地
+  // 合并错题本
   for (const nb of remoteNotebooks || []) {
     if (nb.is_deleted) {
       try {
@@ -1200,7 +1200,7 @@ export async function apiSyncCloud(
     }
   }
 
-  // 将远程错题合并到本地
+  // 合并错题
   for (const prob of remoteProblems || []) {
     if (prob.is_deleted) {
       try {
@@ -1214,7 +1214,7 @@ export async function apiSyncCloud(
       try {
         const local = localProblemsMap.get(prob.uuid);
         const localUpdatedMs = parseSqliteUtcToMs(local?.updated_at);
-        // 如果本地已存在且本地修改时间晚于云端数据，保留本地修改以防回滚
+        // 本地记录较新时跳过覆盖
         if (local && !local.is_deleted && localUpdatedMs >= prob.updated_at) {
           continue;
         }
@@ -1251,13 +1251,13 @@ export async function apiSyncCloud(
     }
   }
 
-  // 2. Push 阶段：推送本地修改到云端
+  // 2. 推送本地数据
   onProgress?.('正在推送本地最新变更...');
   const currentLocalProblems = await apiGetProblemsForSync();
   const currentLocalNotebooks = await apiGetNotebooksForSync();
   const localTags = await apiGetTags();
 
-  // 精准提取本地真实 updated_at
+  // 转换时间戳格式
   const pushNotebooks = currentLocalNotebooks.map((n: Notebook) => ({
     id: n.id,
     name: n.name,
@@ -1283,7 +1283,7 @@ export async function apiSyncCloud(
     updated_at: parseSqliteUtcToMs(p.updated_at) || Date.now(),
   }));
 
-  // 若不是首次同步，可仅筛选有实质修改的数据推送（容许 5s 时钟漂移）
+  // 筛选增量数据（允许 5 秒时钟漂移）
   const thresholdMs = lastSyncTimestamp > 0 ? Math.max(0, lastSyncTimestamp - 5000) : 0;
   const filteredProblems = pushProblems.filter((p) => p.updated_at >= thresholdMs);
   const filteredNotebooks = pushNotebooks.filter((n) => n.updated_at >= thresholdMs);
@@ -1314,8 +1314,8 @@ export async function apiSyncCloud(
     result.pushedNotebooks = pushJson.data?.applied_notebooks ?? 0;
   }
 
-  // 3. 图片资源真实磁盘比对与双向同步
-  onProgress?.('正在比对本地磁盘与云端图片...');
+  // 3. 同步图片附件
+  onProgress?.('正在比对本地与云端图片...');
   const localDiskFiles = await apiGetLocalImageFilenames();
   const allActiveProblems = (await apiGetProblems()).filter((p) => !p.is_deleted);
   const requiredImageSet = new Set<string>();
@@ -1348,7 +1348,7 @@ export async function apiSyncCloud(
     if (checkImgRes.ok && checkImgJson.code === 200 && checkImgJson.data) {
       const { need_upload, need_download } = checkImgJson.data;
 
-      // 逐张上传本地有但服务端缺失的图片
+      // 上传本地存在但服务端缺失的图片
       if (Array.isArray(need_upload) && need_upload.length > 0) {
         onProgress?.(`正在上传图片 (0/${need_upload.length})...`);
         let upIdx = 0;
@@ -1384,7 +1384,7 @@ export async function apiSyncCloud(
         }
       }
 
-      // 逐张下载服务端有但本地缺失的图片
+      // 下载服务端存在但本地缺失的图片
       if (Array.isArray(need_download) && need_download.length > 0) {
         onProgress?.(`正在下载云端图片 (0/${need_download.length})...`);
         let downIdx = 0;
@@ -1406,7 +1406,7 @@ export async function apiSyncCloud(
           onProgress?.(`正在下载云端图片 (${downIdx}/${need_download.length})...`);
         }
 
-        // 通知前端界面图片已下载完成，可无感刷新
+        // 触发图片同步完成事件
         if (typeof window !== 'undefined' && result.downloadedImages > 0) {
           window.dispatchEvent(new CustomEvent('naosu:images-synced', { detail: { count: result.downloadedImages } }));
         }
@@ -1416,7 +1416,7 @@ export async function apiSyncCloud(
     console.warn('Image sync error:', imgErr);
   }
 
-  // 4. 同步最新用户头像
+  // 4. 同步头像
   try {
     const summary = await apiGetProfileSummary();
     if (summary.avatar_url) {
@@ -1426,7 +1426,7 @@ export async function apiSyncCloud(
     console.warn('Avatar sync check:', avErr);
   }
 
-  // 5. 更新同步时间戳与本地镜像
+  // 5. 记录同步时间与更新镜像
   if (server_timestamp) {
     localStorage.setItem('naosu_last_sync_timestamp', String(server_timestamp));
     const nowStr = new Date(server_timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });

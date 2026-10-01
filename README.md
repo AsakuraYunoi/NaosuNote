@@ -2,7 +2,7 @@
 
 > **理科学科错题管理与智能排版重练系统**  
 > STEM Mistake Notebook & Smart Exam Typesetting Application  
-> 当前版本：`v0.2.1` · 架构：Tauri v2 + Vue 3 + TypeScript + Rust + SQLite + KaTeX + Material Design 3
+> 当前版本：`beta0.2.2` · 架构：Tauri v2 + Vue 3 + TypeScript + Rust + SQLite + KaTeX + Material Design 3
 
 ---
 
@@ -107,7 +107,7 @@ bash platforms/android/scripts/package-apk.sh
 
 ```bash
 pnpm run package:macos
-# 产物输出至 release-portable/NaosuNote_0.2.1.dmg
+# 产物输出至 release-portable/NaosuNote_0.2.2.dmg
 ```
 
 ### 3. Windows 单文件与免安装绿色包
@@ -115,7 +115,7 @@ pnpm run package:macos
 ```powershell
 # 在 Windows PowerShell 中执行
 pnpm run package:windows
-# 产物输出至 release-portable/NaosuNote_0.2.1_x64.exe 与对应 Zip
+# 产物输出至 release-portable/NaosuNote_0.2.2_x64.exe 与对应 Zip
 ```
 
 ---

@@ -20,7 +20,7 @@ echo -e "${CYAN}      NaosuNote macOS 应用一键打包流水线            ${N
 echo -e "${CYAN}====================================================${NC}"
 
 # 0. 版本号检测
-VERSION="0.2.1"
+VERSION="0.2.2"
 if [ -f "package.json" ]; then
     DETECTED_VER=$(grep -m 1 '"version"' package.json | awk -F '"' '{print $4}')
     if [ -n "$DETECTED_VER" ]; then

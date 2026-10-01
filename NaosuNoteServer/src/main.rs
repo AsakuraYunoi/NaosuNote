@@ -36,11 +36,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     tracing::info!("=====================================================");
-    tracing::info!("  NaosuNoteServer (Test Phase v0.1.0-beta) Starting  ");
+    tracing::info!("  NaosuNoteServer (Test Phase beta0.2.2) Starting  ");
     tracing::info!("=====================================================");
 
     // 2. 加载 config.toml
     let config = AppConfig::load_from_file("config.toml");
+
+    if config.server.jwt_secret.trim().is_empty() {
+        tracing::error!("server.jwt_secret 未配置，服务终止启动");
+        return Err("Missing jwt_secret in configuration".into());
+    }
+    if config.server.jwt_secret.contains("CHANGE_ME") || config.server.jwt_secret == "naosu_super_secret_jwt_key_2026_xyz" {
+        tracing::warn!("当前使用默认或占位 jwt_secret，生产环境请在 config.toml 中替换为独立随机密钥");
+    }
 
     // 3. 确保存储目录就绪
     let storage_path = Path::new(&config.storage.local_root);

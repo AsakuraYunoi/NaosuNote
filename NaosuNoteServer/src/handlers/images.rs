@@ -32,7 +32,7 @@ pub async fn check_missing_images(
         .join(&auth_user.uuid)
         .join("images");
 
-    // 仅确认物理文件确实存在于服务器磁盘上的图片
+    // 过滤服务端磁盘实际存在的文件
     let server_set: std::collections::HashSet<String> = server_images
         .into_iter()
         .filter(|img| user_img_dir.join(img).exists())
@@ -44,7 +44,7 @@ pub async fn check_missing_images(
         let local_set: std::collections::HashSet<String> = local_disk.into_iter().collect();
         let required_set: std::collections::HashSet<String> = required.into_iter().collect();
 
-        // 待上传：客户端本地物理存在，但服务端不存在的图片
+        // 客户端存在但服务端缺失：需上传
         let mut upload = Vec::new();
         for l_img in &local_set {
             if !server_set.contains(l_img) {
@@ -52,17 +52,16 @@ pub async fn check_missing_images(
             }
         }
 
-        // 待下载：客户端错题元数据中声明需要，且服务端已存储，但客户端物理磁盘缺失的图片
+        // 服务端存在但客户端缺失：需下载
         let mut download = Vec::new();
         for r_img in &required_set {
             if server_set.contains(r_img) && !local_set.contains(r_img) {
                 download.push(r_img.clone());
             }
         }
-
         (upload, download)
     } else {
-        // 兼容旧格式请求
+        // 兼容旧字段
         let client_images = req.client_image_filenames.unwrap_or_default();
         let client_set: std::collections::HashSet<String> = client_images.into_iter().collect();
 

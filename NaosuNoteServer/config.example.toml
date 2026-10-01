@@ -1,0 +1,35 @@
+[server]
+# 监听地址与端口
+listen_addr = "0.0.0.0:8234"
+
+# 外部访问地址，用于拼接资源 URL，末尾不带 /
+public_url = "https://naosunote.yunoi.online"
+
+# JWT 签名密钥，生产环境必须替换为高强度随机字符串（如 openssl rand -hex 32）
+jwt_secret = "CHANGE_ME_PLEASE_RUN_OPENSSL_RAND_HEX_32_TO_GENERATE"
+
+# Token 有效天数
+token_expire_days = 7
+
+[registration]
+# 注册是否需要邀请码
+require_invite = true
+
+# 允许注册的最大用户数
+max_users = 50
+
+# 邀请码列表，每个仅限使用一次
+invite_codes = [
+    "SAMPLE_INVITE_CODE_1",
+    "SAMPLE_INVITE_CODE_2"
+]
+
+[storage]
+# 存储驱动，目前仅支持 local
+driver = "local"
+
+# 文件存储目录
+local_root = "./storage"
+
+# 单用户存储配额，单位字节（209715200 = 200MB）
+per_user_quota_bytes = 209715200

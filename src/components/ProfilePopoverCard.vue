@@ -84,8 +84,8 @@
                 </div>
 
                 <div class="tag-row">
-                  <span class="pro-badge">Pro</span>
-                  <span class="role-pill">本地与云端</span>
+                  <span class="pro-badge">Beta</span>
+                  <span class="role-pill">云端同步已启用</span>
                 </div>
               </div>
 
@@ -137,7 +137,7 @@
                 </div>
 
                 <div class="email-row">
-                  <span class="user-email guest-sub">数据保存在本机 · 未绑定云端账号</span>
+                  <span class="user-email guest-sub"></span>
                 </div>
                 <div class="tag-row">
                   <span class="guest-pill local-mode-pill">本地模式</span>
@@ -253,11 +253,11 @@
                     }"
                   ></span>
                   <span class="sync-title">
-                    {{ !isLoggedIn ? '未登录 · 仅保存在本地' : isSyncing ? '正在同步镜像与云端...' : '云端与镜像已同步' }}
+                    {{ !isLoggedIn ? '未登录 · 本地模式' : isSyncing ? '正在同步镜像与云端...' : '云端与镜像已同步' }}
                   </span>
                 </div>
                 <span class="sync-sub">
-                  {{ !isLoggedIn ? '登录后可开启自动同步' : isSyncing ? '更新 HTML 镜像与 LaTeX 渲染缓存' : `上次同步：${lastSyncTimeText}` }}
+                  {{ !isLoggedIn ? '登录后开启多端同步' : isSyncing ? '更新 HTML 镜像与 LaTeX 渲染缓存' : `上次同步：${lastSyncTimeText}` }}
                 </span>
               </div>
 
@@ -758,11 +758,11 @@ async function openDataDir() {
 }
 
 function handlePrivacyClick() {
-  emit('notify', '数据严格保存在本地 SQLite 与私有 WebDAV，保障绝对隐私');
+  emit('notify', 'Beta版：用户隐私由用户自行负责');
 }
 
 function handleTermsClick() {
-  emit('notify', 'NaosuNote 离线双向同步及开源协议');
+  emit('notify', '启用NaosuNote Beta版提供的云服务，即代表您默认同意由您自行承担数据泄漏、丢失等风险。');
 }
 </script>
 

@@ -63,7 +63,7 @@ if (Get-Command "rustup" -ErrorAction SilentlyContinue) {
 }
 
 # 读取 package.json 获取版本号
-$Version = "0.2.1"
+$Version = "0.2.2"
 if (Test-Path "package.json") {
     try {
         $PkgJson = Get-Content "package.json" -Raw | ConvertFrom-Json
