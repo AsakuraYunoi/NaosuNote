@@ -80,9 +80,13 @@ Write-Step "[2/5] 正在构建前端生产包 (Vite)..."
 & $PkgManager run build
 Write-Success "前端生产包构建完成 (dist/)"
 
-# 3. 编译后端 Rust 程序 (生成 x64 二进制)
+# 3. 编译后端 Rust 程序并内嵌前端资源 (生成 x64 单文件应用)
 Write-Step "[3/5] 正在编译 Windows x64 原生程序 ($Target)..."
-cargo build --release --manifest-path src-tauri/Cargo.toml --target $Target
+if ($PkgManager -eq "pnpm") {
+    & pnpm tauri build --no-bundle --target $Target
+} else {
+    & npx tauri build --no-bundle --target $Target
+}
 
 # 定位编译出的 EXE
 $CandidatePaths = @(

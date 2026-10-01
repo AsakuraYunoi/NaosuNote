@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 chcp 65001 >nul
 title NaosuNote Windows x64 打包工具
 
@@ -8,7 +8,7 @@ echo ====================================================
 echo 正在启动 PowerShell 打包流水线...
 echo.
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0package-portable.ps1" %*
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0package-portable.ps1" %*
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
