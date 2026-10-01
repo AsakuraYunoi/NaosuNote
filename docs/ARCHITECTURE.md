@@ -1,409 +1,413 @@
-# NaosuNote 架构设计与开发者技术手册 (Architecture & Developer Guide)
+# NaosuNote 架构设计与系统技术手册 (Architecture & Technical Manual)
 
-> 版本：v0.1.0 beta  
-> 技术栈：Tauri v2 + Vue 3 + TypeScript + Rust + SQLite + KaTeX + Material Design 3  
-> 适用对象：初次接触或维护 NaosuNote 的核心研发人员
+> **版本**：v0.2.1  
+> **核心架构**：Tauri v2 + Vue 3 (Composition API) + TypeScript + Rust + SQLite (rusqlite) + KaTeX + Material Design 3  
+> **支持终端**：macOS (Apple Silicon & Intel x64), Windows (x64 & ARM64), Android (Universal APK & Per-ABI APK), iOS / Web 浏览器预览  
+> **适用对象**：系统维护者、跨端开发团队及学术研发人员
 
 ---
 
 ## 目录
 
 1. [项目定位与核心设计哲学](#一-项目定位与核心设计哲学)
-2. [系统整体架构与拓扑图](#二-系统整体架构与拓扑图)
-3. [工程代码目录导航](#三-工程代码目录导航)
-4. [核心业务与技术实现细节](#四-核心业务与技术实现细节)
-   - [4.1 标准错题数据结构与 Gemini 录入管道](#41-标准错题数据结构与-gemini-录入管道)
-   - [4.2 双轨持久化与自动安全迁移引擎 (Storage & Mirroring Engine)](#42-双轨持久化与自动安全迁移引擎-storage--mirroring-engine)
-   - [4.3 智能一页吸附与试卷排版引擎 (Auto-Fit Engine)](#43-智能一页吸附与试卷排版引擎-auto-fit-engine)
-   - [4.4 跨平台高保真矢量 PDF 导出与静默打印架构](#44-跨平台高保真矢量-pdf-导出与静默打印架构)
-   - [4.5 Material Design 3 全局色彩系统与深色模式](#45-material-design-3-全局色彩系统与深色模式)
-5. [常见技术陷阱与避坑指南 (Crucial Caveats)](#五-常见技术陷阱与避坑指南-crucial-caveats)
-6. [开发调试与跨平台打包构建指令](#六-开发调试与跨平台打包构建指令)
+2. [跨端系统整体拓扑与分层架构](#二-跨端系统整体拓扑与分层架构)
+3. [源码目录导航与职责矩阵](#三-源码目录导航与职责矩阵)
+4. [核心子系统与关键技术实现](#四-核心子系统与关键技术实现)
+   - [4.1 多形态设备自适应渲染架构 (Dual-Layout Architecture)](#41-多形态设备自适应渲染架构-dual-layout-architecture)
+   - [4.2 零预设本地优先与多端自适应存储引擎 (Storage & Persistence Engine)](#42-零预设本地优先与多端自适应存储引擎-storage--persistence-engine)
+   - [4.3 智能一页吸附与试卷排版引擎 (Auto-Fit Typesetting Engine)](#43-智能一页吸附与试卷排版引擎-auto-fit-typesetting-engine)
+   - [4.4 矢量手写画板与公式气泡编辑系统 (Canvas & Formula Bubble Editor)](#44-矢量手写画板与公式气泡编辑系统-canvas--formula-bubble-editor)
+   - [4.5 双轨持久化与离线 HTML 单文件镜像器 (Mirroring Engine)](#45-双轨持久化与离线-html-单文件镜像器-mirroring-engine)
+   - [4.6 云端双向同步协议与离线增量合并 (Cloud Sync Protocol)](#46-云端双向同步协议与离线增量合并-cloud-sync-protocol)
+   - [4.7 原生高保真矢量 PDF 输出与静默打印架构](#47-原生高保真矢量-pdf-输出与静默打印架构)
+5. [跨端工程打包与流水线规范](#五-跨端工程打包与流水线规范)
+6. [设计规范与避坑准则 (Coding Standards & Crucial Caveats)](#六-设计规范与避坑准则-coding-standards--crucial-caveats)
 
 ---
 
 ## 一、 项目定位与核心设计哲学
 
-NaosuNote 是一款专为 **STEM（数理化生等理科学科）** 设计的专业级错题管理与智能排版重练桌面应用。
+NaosuNote 是专为 **STEM（科学、技术、工程、数学，涵盖数学、物理、化学、生物）** 理科学科深度定制的专业级错题管理、画板推演与试卷智能重练排版系统。
 
 ### 核心设计原则
 
-1. **本地优先与去中心化 (Local-First & Zero Vendor Lock-in)**：
-   - 数据完全保存在用户本地，不依赖任何私有云端服务。
-   - 采用 **双轨持久化与跨版本平滑继承架构**：核心关系型数据统一落盘至操作系统个人文档目录 (`~/Documents/NaosuNoteData/naosu.db`)；同时自动为每个错题本生成独立的单文件纯 HTML 镜像。无论免安装绿色版如何替换升级，用户题库始终永恒安全、开箱即用。
-2. **严谨的学术版式规范**：
-   - 全面剔除 Emoji 表情与非正式日文假名，保持学术试卷与界面的专业度。
-   - 数学、物理、化学公式由 KaTeX 本地离线高保真排版。
-   - 理科电路图、遗传图谱、化学反应流程图采用内嵌 SVG 矢量图渲染，缩放无损。
-3. **试卷印刷智能吸附**：
-   - 针对综合大题（含有三线表格、复杂配图、长选项）容易跨页截断的痛点，创新提出**图文左右并排（Side-by-Side）**、**选项自适应分列**与**智能一页吸附（Auto-Fit）**机制，最大化利用 A4/B5 页面空间。
-4. **系统级原生无损打印与平台深度解耦**：
-   - 不采用简陋的外部网页截屏打印；macOS 接入原生 WebKit/PDFKit 渲染器，Windows 深度集成 Edge Chromium 无头静默打印管道，实现无限放大不失真的矢量输出。
-5. **Google Material Design 3 极致视觉体验**：
-   - 基于 M3 官方色彩 Token，全链路支持**浅色模式 / 深色模式 / 跟随系统**。
+1. **本地优先与去中心化自由 (Local-First & Absolute Data Sovereignty)**：
+   - 用户完全拥有自己的数据资产。系统初次启动默认进入纯本地离线模式，无需注册或强制登录。
+   - 用户名与头像采用中立设计，允许用户自由自定义本地昵称与头像图片，彻底杜绝任何硬编码的预设私人信息。
+   - 存储路径自适应设备特性：在桌面端默认存储于系统文档目录；在 Android/iOS 移动端支持用户根据设备环境选择专属沙盒、外部公开文档目录或自定义目录，并在设置面板中随时迁移。
+2. **多端形态自适应交互 (Adaptive Form Factors)**：
+   - 针对桌面宽屏与平板大屏，提供带有左侧导航导轨、双栏联动的空间利用布局；
+   - 针对移动手机竖屏，提供独立的单手导航底栏、轻量化抽屉弹窗与大触控热区的移动专用交互流；
+   - 启动期由 Rust 底层 `get_device_info` 原生探测屏幕尺寸与系统特性，无缝直推最适配的界面形态。
+3. **学术级严谨规范与零格式污染**：
+   - 界面文字与题干排版彻底剔除 Emoji 表情包及非正式日文假名，保持学术考核与考试试卷的严谨度。
+   - 公式由本地 KaTeX 引擎执行严格 LaTeX 语法解析与离线渲染，杜绝网络公式服务抖动。
+   - 包含电路图、有机反应机理图、受力分析图与遗传系谱图等，均采用内嵌 SVG 矢量图渲染，任意缩放无锯齿。
+4. **智能一页吸附排版 (Auto-Fit Algorithm)**：
+   - 破解长题目跨页切断的行业顽疾：将长选择题选项智能整列（1列/2列/4列自适应），将表格与图例自动重排为图文左右并排（Side-by-Side），实现高紧凑度与 A4/B5 单页黄金吸附。
+5. **双轨数据保护机制**：
+   - 核心关系型数据落盘至 SQLite (`naosu.db`)；
+   - 镜像管道自动将每个错题本同步输出为独立的单文件离线 HTML。即便软件脱离运行环境，直接使用任意系统自带浏览器双击即可完整阅读与打印错题集。
 
 ---
 
-## 二、 系统整体架构与拓扑图
+## 二、 跨端系统整体拓扑与分层架构
 
 ```mermaid
-graph TD
-    subgraph Frontend ["前端层 (Vue 3 + TypeScript + M3)"]
-        UI_Nav["导航导轨 (NavigationRail.vue)"]
-        UI_Ingest["错题录入 (IngestView.vue)"]
-        UI_Lib["错题管理 (LibraryView.vue)"]
-        UI_Print["排版打印 (PrintView.vue)"]
-        UI_Set["系统设置 (SettingsView.vue)"]
-
-        subgraph Core_Utils ["前端核心工具集"]
-            U_Parse["HTML 解析清洗器 (parser.ts)"]
-            U_Exam["智能排版预处理器 (examFormatter.ts)"]
-            U_KaTeX["公式渲染引擎 (katexRender.ts)"]
-            U_Theme["主题响应系统 (theme.ts)"]
-            U_API["Tauri IPC 桥接层 (api.ts)"]
+graph TB
+    subgraph Client_App ["客户端表现层 (Vue 3 + TypeScript)"]
+        direction TB
+        Device_Probe["设备形态探测 (main.ts -> get_device_info)"]
+        
+        subgraph Desktop_Tablet_Layout ["桌面端 & 平板端 (App.vue)"]
+            NavRail["导航导轨 (NavigationRail.vue)"]
+            LibView["错题题库 (LibraryView.vue)"]
+            IngestView["结构化录入 (IngestView.vue)"]
+            PrintView["智能排版打印 (PrintView.vue)"]
+            CanvasBoard["无限手写画板 (CanvasBoard.vue)"]
+            ProfileCard["账户浮窗面板 (ProfilePopoverCard.vue)"]
+        end
+        
+        subgraph Phone_Layout ["手机移动端 (App_phoneOnly.vue)"]
+            PhoneNav["底部触控导轨 (Bottom Bar)"]
+            PhoneLib["移动错题库 (LibraryView_phoneOnly.vue)"]
+            PhoneIngest["移动录入 (IngestView_phoneOnly.vue)"]
+            PhoneProfile["移动个人中心 (ProfileView_phoneOnly.vue)"]
+            PhoneSettings["移动存储设置 (SettingsView_phoneOnly.vue)"]
+            StorageModal["首选目录选择窗 (StorageDirModal_phoneOnly.vue)"]
+        end
+        
+        subgraph Core_Engines ["前端核心计算与渲染引擎"]
+            FormulaEditor["公式气泡浮层 (FormulaBubbleEditor.vue)"]
+            AnswerCamera["答题照片管理 (AnswerCameraPane.vue)"]
+            KaTeX_Engine["公式高保真排版 (katexRender.ts)"]
+            Exam_AutoFit["试卷吸附算法 (examFormatter.ts)"]
+            HTML_Parser["错题语义清洗器 (parser.ts)"]
+            API_Bridge["Tauri IPC 桥接层 (api.ts)"]
         end
     end
 
-    subgraph Backend ["后端桌面层 (Tauri v2 + Rust)"]
-        IPC_Cmds["IPC 调度分发层 (commands.rs)"]
-        Storage_Mgr["存储与迁移管理器 (storage.rs)"]
-        DB_Mgr["SQLite 数据库引擎 (db.rs)"]
-        Mirror_Mgr["HTML 单文件镜像器 (mirror.rs)"]
-        Algo_Lev["Levenshtein 文本查重 (utils.rs)"]
-        State_Mgr["全局线程安全状态 (AppState)"]
-
-        subgraph Platform_Layer ["跨平台适配核心层 (platform/)"]
-            Plat_Mod["统一对外门面 (platform::mod)"]
-            Plat_Common["RAII 资源守卫 (TempFileGuard)"]
-            Plat_Mac["macOS 专有引擎 (macos.rs)"]
-            Plat_Win["Windows 专有引擎 (windows.rs)"]
+    subgraph Rust_Backend ["Tauri v2 宿主后端层 (Rust)"]
+        IPC_Router["IPC 指令调度网关 (commands.rs)"]
+        Storage_Engine["多端存储与配置管理 (storage.rs)"]
+        DB_Engine["SQLite 事务与连接池 (db.rs)"]
+        Mirror_Engine["单文件 HTML 镜像生成器 (mirror.rs)"]
+        Levenshtein["文本编辑距离查重 (utils.rs)"]
+        Global_State["并发安全状态容器 (AppState)"]
+        
+        subgraph Native_Platform_Drivers ["原生平台适配驱动 (platform/)"]
+            MacDriver["macOS 驱动 (WebKit / PDFKit 桥接)"]
+            WinDriver["Windows 驱动 (Edge Chromium 无头管道)"]
+            AndroidDriver["Android 驱动 (JNI 存储 / 沙盒路径解析)"]
         end
     end
 
-    subgraph Platforms_Native ["原生资产与系统基础设施 (platforms/)"]
-        Mac_Native["macOS: platforms/macos/native/html2pdf.m"]
-        Mac_Bin["macOS 编译工具: platforms/macos/bin/html2pdf"]
-        Win_Edge["Windows: 系统内置 Edge/Chromium 静默管道"]
+    subgraph Cloud_Service ["云端同步微服务 (NaosuNoteServer - 可选)"]
+        Server_Auth["JWT 用户鉴权中心"]
+        Server_Sync["时间戳增量同步网关"]
+        Server_DB[("服务端数据库 (SQLite/MySQL/PostgreSQL)")]
     end
 
-    subgraph Storage ["物理持久化层 (用户文档系统)"]
-        File_DB[("个人文档数据库: ~/Documents/NaosuNoteData/naosu.db")]
-        File_Mirrors[("静态 HTML 镜像: {错题本名称}.html")]
-        File_Temp[("RAII 自动回收临时文件: _temp_export_*.html")]
-        OS_Browser["系统默认浏览器 (预览预览)"]
+    subgraph Physical_FS ["底层物理文件系统"]
+        Local_DB[("核心数据库: naosu.db")]
+        Local_Config[("运行配置文件: config.json")]
+        Local_Mirrors[("静态镜像: {错题本}.html")]
+        Local_Media[("手写轨迹与答题照片: media/")]
     end
 
-    %% 前端内部调用
-    UI_Ingest --> U_Parse
-    UI_Ingest --> U_API
-    UI_Lib --> U_API
-    UI_Print --> U_Exam
-    U_Exam --> U_KaTeX
-    UI_Print --> U_API
-    UI_Set --> U_Theme
-    UI_Set --> U_API
-
-    %% IPC 通信
-    U_API -- "tauri::invoke" --> IPC_Cmds
-    IPC_Cmds --> State_Mgr
-    IPC_Cmds --> Algo_Lev
-    IPC_Cmds --> DB_Mgr
-    IPC_Cmds --> Mirror_Mgr
-    IPC_Cmds --> Plat_Mod
-
-    %% 存储与后端初始化
-    Storage_Mgr --> File_DB
-    DB_Mgr <--> File_DB
-    Mirror_Mgr --> File_Mirrors
-
-    %% 跨平台导出调用
-    Plat_Mod --> Plat_Common
-    Plat_Mod --> Plat_Mac
-    Plat_Mod --> Plat_Win
-    Plat_Mac --> Mac_Native -. "build.rs" .-> Mac_Bin
-    Plat_Win --> Win_Edge
-    Plat_Common --> File_Temp
-    Plat_Mod -. "静默唤起" .-> OS_Browser
+    %% 连接拓扑
+    Device_Probe -->|宽度 >= 680px| Desktop_Tablet_Layout
+    Device_Probe -->|宽度 < 680px| Phone_Layout
+    
+    Desktop_Tablet_Layout --> Core_Engines
+    Phone_Layout --> Core_Engines
+    Core_Engines --> API_Bridge
+    
+    API_Bridge -->|Tauri IPC invoke| IPC_Router
+    IPC_Router --> Storage_Engine
+    IPC_Router --> DB_Engine
+    IPC_Router --> Mirror_Engine
+    IPC_Router --> Levenshtein
+    IPC_Router --> Native_Platform_Drivers
+    
+    Storage_Engine --> Local_Config
+    DB_Engine --> Local_DB
+    Mirror_Engine --> Local_Mirrors
+    
+    API_Bridge -.->|HTTPS / REST API 增量对齐| Cloud_Service
 ```
 
 ---
 
-## 三、 工程代码目录导航
+## 三、 源码目录导航与职责矩阵
 
 ```text
 NaosuNote/
-├── .gitignore                          # 全项目根目录版本控制防御规则
-├── README.md                           # 基础说明文档
-├── index.html                          # 网页挂载入口，内嵌离线 KaTeX 字体
-├── package.json                        # 前端依赖配置 (Vue, KaTeX, Lucide 等)
-├── tsconfig.json / tsconfig.node.json  # TypeScript 编译配置
-├── vite.config.ts                      # Vite 8 构建与本地服务器配置
-├── public/                             # 静态资源目录
-│   ├── favicon.svg                     # 品牌矢量 Logo
-│   └── vendor/                         # 本地离线 KaTeX 运行库与 woff2/ttf 字体资产
+├── src/                                  # 前端源码 (Vue 3 + TypeScript)
+│   ├── main.ts                           # 前端主入口：设备形态识别、组件挂载、系统级快捷键
+│   ├── App.vue                           # 桌面与平板端主容器 (大屏侧边导轨 + 宽屏视图联动)
+│   ├── App_phoneOnly.vue                 # 移动端专用主容器 (底部触控栏 + 抽屉弹窗 + 竖屏自适应)
+│   ├── components/                       # 通用 UI 组件
+│   │   ├── NavigationRail.vue            # 桌面导航导轨 (展开/收起、当前学科快捷筛选、主题切换)
+│   │   ├── ProfilePopoverCard.vue        # 桌面端个人中心浮动弹层 (自定义头像、同步状态展示)
+│   │   ├── StorageDirModal_phoneOnly.vue # 移动端存储目录配置模态窗 (内置各系统默认预设与自定义输入)
+│   │   ├── canvas/                       # 手写板与公式编辑子组件
+│   │   │   ├── CanvasBoard.vue           # 矢量手写板 (笔触压感、无限画布漫游、撤销重做)
+│   │   │   └── FormulaBubbleEditor.vue   # 悬浮公式气泡输入窗 (KaTeX 实时公式拾取与插入)
+│   │   └── answer/
+│   │       └── AnswerCameraPane.vue      # 答题卡与照片录入面板 (拍照、相册导入、Markdown 查看)
+│   ├── views/                            # 业务视图层
+│   │   ├── LibraryView.vue               # 桌面错题库 (树状学科导航、多维标签筛选、批量移动/导出)
+│   │   ├── LibraryView_phoneOnly.vue     # 移动错题库 (卡片滑动、竖向紧凑流、触控上下文菜单)
+│   │   ├── IngestView.vue                # 桌面录入界面 (结构化 HTML 输入、智能实时查重比对)
+│   │   ├── IngestView_phoneOnly.vue      # 移动录入界面 (折叠面板、移动端查重浮窗)
+│   │   ├── PrintView.vue                 # 智能排版视图 (试卷双栏预览、单页吸附计算、无损打印调起)
+│   │   ├── ProfileView_phoneOnly.vue     # 移动个人中心 (本地用户信息管理、云端同步配置)
+│   │   └── SettingsView_phoneOnly.vue    # 移动设置中心 (存储目录切换、题库重置与镜像导出)
+│   ├── utils/                            # 前端核心工具库
+│   │   ├── api.ts                        # Tauri IPC 与云端 REST API 统一封装门面
+│   │   ├── avatar.ts                     # 默认中立矢量头像与头像持久化管理
+│   │   ├── examFormatter.ts              # 试卷智能排版算法 (图文并排、选项对齐、一页吸附计算)
+│   │   ├── katexRender.ts                # KaTeX 本地公式安全渲染流水线
+│   │   ├── parser.ts                     # 标准错题 HTML 语义解析与内容清洗
+│   │   └── theme.ts                      # Material Design 3 全局色彩 Token 与主题切换引擎
+│   └── types/                            # 跨层 TypeScript 类型定义
+│       └── problem.ts                    # 错题、题库、设备信息、同步模型契约接口
 │
-├── platforms/                          # 【跨平台资源归拢中心】
-│   ├── macos/                          # macOS 专属资产一站式归拢
-│   │   ├── native/                     # WebKit/PDFKit 原生工具 Objective-C 源码
-│   │   │   └── html2pdf.m
-│   │   ├── bin/                        # 编译输出的原生工具 (build.rs 自动生成，git ignore)
-│   │   │   └── html2pdf
-│   │   └── scripts/                    # macOS 打包发布脚本
-│   │       └── package-app.sh
-│   └── windows/                        # Windows 专属资产
-│       └── scripts/                    # Windows x64 单文件应用与免安装包自动化打包脚本
-│           ├── package-portable.ps1    # PowerShell 流水线（支持任意架构宿主机跨架构编译 x64）
-│           └── package-portable.bat    # Windows 资源管理器一键双击打包批处理
+├── src-tauri/                            # 后端源码 (Rust 核心)
+│   ├── Cargo.toml                        # Rust 依赖声明 (tauri, rusqlite, serde, dirs, image 等)
+│   ├── tauri.conf.json                   # Tauri 跨平台窗口、权限与打包规格配置
+│   ├── src/
+│   │   ├── main.rs                       # 后端二进制入口
+│   │   ├── lib.rs                        # Tauri 应用初始化编排、插件注册与 IPC 路由表挂载
+│   │   ├── commands.rs                   # 核心 IPC 指令处理分发层 (全平台统一接口)
+│   │   ├── db.rs                         # SQLite 数据库底层操作抽象层 (自动建表、增删改查)
+│   │   ├── storage.rs                    # 存储引擎与多端路径自适应解析器 (config.json 管理)
+│   │   ├── mirror.rs                     # 离线单文件 HTML 镜像生成与同步引擎
+│   │   ├── models.rs                     # Rust 数据实体结构 (Problem, Notebook, DeviceInfo 等)
+│   │   ├── utils.rs                      # Levenshtein 编辑距离算法实现与单元测试
+│   │   └── platform/                     # 跨操作系统底层能力接入
+│   │       ├── mod.rs                    # 跨平台打印与环境统一门面
+│   │       ├── macos.rs                  # macOS 专有无头 PDFKit 管道实现
+│   │       └── windows.rs                # Windows Edge Chromium 静默打印调用管道
+│   └── gen/                              # 移动端跨平台构建工程 (Android Gradle / iOS Xcode)
+│       └── android/                      # Android 原生包装工程 (Gradle 脚本、清单与本地属性)
 │
-├── src/                                # 前端 Vue3 源码
-│   ├── main.ts                         # 应用挂载入口，全局主题初始化
-│   ├── App.vue                         # 根组件：路由切换、全局 Toast、打印篮状态
-│   ├── types/                          # 核心数据模型接口 (Problem, Notebook 等)
-│   ├── assets/styles/                  # 样式系统 (M3 Tokens、三线表排版、基础重置)
-│   ├── components/                     # 通用组件 (NavigationRail, ProblemCard, StarRating 等)
-│   ├── views/                          # 核心视图 (IngestView, LibraryView, PrintView, SettingsView)
-│   └── utils/                          # 工具库 (api, parser, examFormatter, katexRender, theme)
+├── platforms/                            # 平台特定资源与一键打包流水线
+│   ├── android/scripts/
+│   │   └── package-apk.sh                # Android APK 自动化构建脚本 (支持全架构通用包与切分包)
+│   ├── macos/
+│   │   ├── bin/html2pdf                  # 预编译 macOS 高性能 PDF 生成工具
+│   │   ├── native/html2pdf.m             # 原生 Objective-C WebKit 渲染器源码
+│   │   └── scripts/package-app.sh        # macOS 一键 DMG / APP 构建脚本
+│   └── windows/scripts/
+│       ├── package-portable.ps1          # Windows 单文件 EXE / 绿色 Zip 打包脚本 (PowerShell)
+│       └── package-portable.bat          # Windows 双击快速打包入口批处理
 │
-└── src-tauri/                          # 纯净的 Rust 桌面后端宿主
-    ├── Cargo.toml                      # Rust 依赖声明 (rusqlite, tauri, serde, rfd 等)
-    ├── tauri.conf.json                 # Tauri 配置（窗口尺寸、唯一 ID com.naosunote.app 等）
-    ├── build.rs                        # 构建驱动（检测并编译 platforms/macos/native/html2pdf.m）
-    └── src/
-        ├── main.rs                     # 应用程序入口（Windows 控制台防黑框注入）
-        ├── lib.rs                      # Tauri 装配中心（插件与 AppState 注册）
-        ├── commands.rs                 # Tauri IPC 业务命令分发层（纯业务，无平台宏）
-        ├── storage.rs                  # 数据目录解析、环境变量兜底与初始库无缝平滑迁移
-        ├── models.rs                   # 数据结构体定义
-        ├── db.rs                       # SQLite 底层连接与持久化操作
-        ├── mirror.rs                   # 离线单文件静态 HTML 镜像生成引擎
-        ├── utils.rs                    # Levenshtein 字符串查重算法
-        └── platform/                   # 跨平台系统级适配核心模块
-            ├── mod.rs                  # 统一跨平台对外门面 (open_path / export_html_to_pdf)
-            ├── common.rs               # 通用设施：RAII TempFileGuard 临时文件自清理守卫
-            ├── macos.rs                # macOS 专属适配：WebKit 渲染工具探测与调度
-            └── windows.rs              # Windows 专属适配：Edge/Chrome 级联探测与静默打印
+├── NaosuNoteServer/                      # 云端增量同步后端 (Go Gin 架构，可选独立部署)
+└── release-portable/                     # 跨平台构建发布产物归集目录 (已配置 Git 忽略)
 ```
 
 ---
 
-## 四、 核心业务与技术实现细节
+## 四、 核心子系统与关键技术实现
 
-### 4.1 标准错题数据结构与 Gemini 录入管道
+### 4.1 多形态设备自适应渲染架构 (Dual-Layout Architecture)
 
-错题以标准的语义化 HTML 代码块作为媒介传输，具有极强的可读性与跨媒介兼容性：
+为同时兼顾 PC 桌面端（键鼠多窗口、大屏）、平板（触控笔手写、双栏分屏）以及智能手机（单手触控、竖屏流式）的差异化操作体验，NaosuNote 采用形态解耦架构：
 
-```html
-<div class="naosu-problem" subject="物理" type="简答" date="20260917" summary="电磁感应双棒模型运动分析" uuid="optional-uuid">
-  <div class="problem-body">
-    <!-- 纯题干正文，支持 LaTeX 公式如 $E=BLv$ 以及内嵌 SVG/Table -->
-    如图所示，在磁感应强度为 $B$ 的匀强磁场中...
-    <div class="img">
-      <svg viewBox="0 0 400 200">...</svg>
-    </div>
-    <table>...</table>
-    <div class="options">
-      <span>A. 速度增大</span>
-      <span>B. 速度减小</span>
-    </div>
-  </div>
-</div>
+1. **设备探测管道**：
+   在应用挂载时，`main.ts` 首先调用 Rust 后端指令 `get_device_info`：
+   ```rust
+   // src-tauri/src/commands.rs
+   #[tauri::command]
+   pub fn get_device_info(window: tauri::Window) -> Result<crate::models::DeviceInfo, String> {
+       #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+       {
+           let _ = window;
+           Ok(crate::models::DeviceInfo {
+               platform: "desktop".into(),
+               form_factor: "desktop".into(),
+               os: std::env::consts::OS.into(),
+               screen_width_dp: 1200.0,
+           })
+       }
+       #[cfg(any(target_os = "android", target_os = "ios"))]
+       {
+           let _ = window;
+           let os_str = if cfg!(target_os = "ios") { "ios" } else { "android" };
+           Ok(crate::models::DeviceInfo {
+               platform: "mobile".into(),
+               form_factor: "phone".into(),
+               os: os_str.into(),
+               screen_width_dp: 390.0,
+           })
+       }
+   }
+   ```
+2. **动态形态装载**：
+   `main.ts` 根据返回的 `form_factor` 与窗口实际像素宽度：
+   - 宽度 `< 680px` 或移动平台判定为 Phone 时，动态挂载 `App_phoneOnly.vue`；
+   - 其余情况挂载完整版 `App.vue`。
+
+---
+
+### 4.2 零预设本地优先与多端自适应存储引擎 (Storage & Persistence Engine)
+
+为确保绝对数据主权与极简初始体验，系统实施以下设计：
+
+1. **初始零预设状态**：
+   - 首次安装启动，本地认证状态统一初始化为未登录 (`naosu_is_logged_in = false`)；
+   - 默认头像采用矢量纯色 Material 图标 (`DEFAULT_AVATAR_SVG`)，不绑定任何特定测试邮箱或假名昵称；
+   - 用户在本地模式下可随意修改昵称与本地头像，无需经过云端中转。
+2. **多端自适应持久化路径解析**：
+   各操作系统对于文件写入权限有严格安全限制（如 Android 10+ 分区存储 Scoped Storage、iOS 专属沙盒）。系统通过 `get_storage_options` 提供系统级预设选项：
+   - **Android**：
+     - 预设 A（沙盒内部存储）：`/data/user/0/com.naosunote.app/files/NaosuNoteData`，安全性最高；
+     - 预设 B（共享文档目录）：`/storage/emulated/0/Documents/NaosuNoteData`，便于用户导出备份；
+     - 自定义输入：支持自由指定特定外部 SD 卡或目录。
+   - **iOS**：
+     - 预设 A（应用文档目录）：`~/Documents/NaosuNoteData`，支持 iTunes / 文件 App 访问；
+     - 预设 B（支持库目录）：`~/Library/Application Support/NaosuNoteData`。
+   - **Windows / macOS / Linux**：
+     - 默认：`~/Documents/NaosuNoteData/`。
+3. **配置持久化与热重载**：
+   所选存储根路径持久化保存在用户应用配置目录下的 `config.json`：
+   ```json
+   {
+     "data_dir": "/Users/yunoi/Documents/NaosuNoteData"
+   }
+   ```
+   当用户在前端通过 `StorageDirModal_phoneOnly.vue` 或设置面板切换目录时，Rust 后端 `set_data_dir` 自动重新初始化 SQLite 数据库连接池并平滑迁移既有种子数据。
+
+---
+
+### 4.3 智能一页吸附与试卷排版引擎 (Auto-Fit Typesetting Engine)
+
+在导出或打印理科试卷时，公式、表格与长图极易导致大题在页面中部断开，破坏作答完整性。NaosuNote 在 `src/utils/examFormatter.ts` 中构建了自适应排版引擎：
+
+1. **图文左右并排 (Side-by-Side Processing)**：
+   - 自动检测题干中的三线表（`<table>`）与矢量配图（`<svg>` 或 `<img>`）；
+   - 满足并排阈值时，自动将原本上下堆叠的结构包装为 Flex 布局的左右分栏网格，表格居左、图例居右，横向对齐率达 100%，垂直页面占用缩减 40% 以上。
+2. **长选项自适应网格对齐 (Choice Options Adaptive Columnization)**：
+   - 分析四项选择题（A/B/C/D）字符长度：
+     - 所有选项极短（平均长度 < 12 字符）：自动排成 **4 列横排**（占单行）；
+     - 选项中等长度（平均长度 13~28 字符）：自动排成 **2 列双行**；
+     - 选项包含复杂长公式或大篇幅描述：保持 **1 列 4 行** 纵向排列。
+3. **一页吸附密度压缩**：
+   - 计算单题整体高度，在打印样式中注入 `@media print { page-break-inside: avoid; }`；
+   - 提供紧凑试卷模式（缩减行间距与外边距 25%），最大化促成综合题在单页内完整呈现。
+
+---
+
+### 4.4 矢量手写画板与公式气泡编辑系统 (Canvas & Formula Bubble Editor)
+
+在推导理科题目或订正反思时，纯文本输入往往无法满足草稿演算需求。
+
+1. **无限手写演算板 (`CanvasBoard.vue`)**：
+   - 基于 HTML5 Canvas 搭配离屏渲染技术构建；
+   - 具备压感模拟、笔迹平滑平滑化贝塞尔曲线拟合算法；
+   - 支持多层绘制（草稿铅笔、荧光记号笔、橡皮擦）、手势双指平移与等比缩放；
+   - 具备完整的基于堆栈的撤销（Undo）与重做（Redo）操作流；
+   - 笔迹可直接无损保存为 WebP/PNG 附件，关联至当前错题的订正流中。
+2. **公式气泡悬浮编辑器 (`FormulaBubbleEditor.vue`)**：
+   - 用户在题干编辑区域键入或划选公式时触发；
+   - 内置理科常用 LaTeX 符号快捷矩阵（包含希腊字母 $\alpha, \beta, \gamma, \Delta$、微积分算子 $\int, \lim, \frac{dy}{dx}$、化学方程式配平上下标、矩阵等）；
+   - 集成实时 KaTeX 双向视图：用户键入 LaTeX 源码的同时，上方气泡毫秒级渲染出最终排版效果，确认后一键插入光标处。
+
+---
+
+### 4.5 双轨持久化与离线 HTML 单文件镜像器 (Mirroring Engine)
+
+为防止客户端升级、配置漂移或极端系统故障导致题库数据遗失，系统构建了全自动单文件镜像机制：
+
+1. **触发机制**：
+   每当新增、修改、批量移动错题或完成云端同步后，Rust 后端 `sync_all_mirrors` 自动在后台异步启动。
+2. **单文件自包含特性**：
+   - 生成的 HTML 文件包含完整的错题元数据、分类、KaTeX 内联样式与渲染后的 DOM；
+   - 本地题图与手写草稿自动通过 `mirror.rs` 内置的 `base64_encode` 算法转为 Data URL 嵌入 HTML；
+   - 用户可脱离 NaosuNote 应用，随时将 `.html` 文件拷入手机、U 盘或发送至打印店，使用任意现代浏览器均能保持 100% 原始视觉效果。
+
+---
+
+### 4.6 云端双向同步协议与离线增量合并 (Cloud Sync Protocol)
+
+为支持多设备数据互通（例如手机拍照录题，平板使用画板演算，PC 整理导出试卷），系统提供与 `NaosuNoteServer` 对接的轻量 RESTful 增量同步流：
+
+```text
+客户端                                             云端服务器
+  │                                                   │
+  ├────── POST /api/v1/auth/login (JWT 鉴权) ─────────>│
+  │<───── 返回 access_token 与用户信息 ────────────────┤
+  │                                                   │
+  │─── POST /api/v1/sync/push (带 last_sync_timestamp)─>│
+  │    提交本地新增/修改的错题与分类增量                   │
+  │<── 返回云端变更集合与最新全局 server_timestamp ─────┤
+  │                                                   │
+  │─── POST /api/v1/sync/upload-image (上传图片资源) ───>│
+  │<── 返回持久化远程 URL                              │
+  │                                                   │
+  └─── 触发本地 mirror.rs 重新渲染各科 HTML 镜像 ───────┘
 ```
 
-**解析与录入管道**：
-
-1. `parser.ts` 提取 `extractCleanStemText`，过滤 `<svg>` 并剥离 HTML 标签，归一化纯文本；
-2. 后端 `check_duplicate` 调用 `utils.rs` 计算 Levenshtein 相似度：
-   $$Similarity = 1.0 - \frac{Distance}{\max(len1, len2)}$$
-3. 相似度 $\ge 85\%$ 时前端弹出 `DuplicateDialog`，提供「提升重要性」与「另存新题」供决策。
+- **冲突裁决准则**：在本地离线修改与云端更新发生时间碰撞时，以 `updated_at` 时间戳为基准采用“最新写入胜出（Last-Write-Wins）”策略，确保各端状态收敛一致。
 
 ---
 
-### 4.2 双轨持久化与自动安全迁移引擎 (Storage & Mirroring Engine)
+### 4.7 原生高保真矢量 PDF 输出与静默打印架构
 
-为保障用户数据的绝对安全以及绿色免安装版快速分发，系统采用 **独立存储管理 + 双写持久化**：
+NaosuNote 彻底放弃了质量低劣的网页截图式 Canvas 打印方案，针对主流桌面操作系统实现平台级原生管道：
 
-1. **统一存储目录解析与环境变量兜底 (`src-tauri/src/storage.rs`)**：
-   - 默认将数据目录固定在系统标准个人文档目录：`~/Documents/NaosuNoteData`（Windows 下解析为 `C:\Users\<用户名>\Documents\NaosuNoteData`）；
-   - Windows 环境下提供针对 `%USERPROFILE%\Documents\NaosuNoteData` 的环境变量兜底，抵御权限受限或快捷方式调起的路径偏移；
-   - **初始题库无缝迁移机制**：若目标文档目录中尚无 `naosu.db`，系统首次启动时自动从工程自带的 `data/naosu.db` 安全复制一份，保证历史题目免安装开箱即用，后续升级替换 exe 永不丢数据。
-2. **SQLite 结构化存储 (`src-tauri/src/db.rs`)**：
-   - 毫秒级支持按学科、类型、日期、多选标签搜索与排序，保障日常高频交互性能。
-3. **静态 HTML 镜像同步 (`src-tauri/src/mirror.rs`)**：
-   - 错题发生增删改或重命名错题本时，`MirrorManager` 自动更新 `{错题本名称}.html`；
-   - 文件名经过 `sanitize_filename` 清洗过滤非法字符，内置响应式三线表 CSS、KaTeX 离线字体与自适应打印断页规则，脱离主软件仍可永久浏览。
+1. **macOS 架构**：
+   - 后端通过 `platforms/macos/bin/html2pdf` 调用由 Objective-C 编写的原生命令行工具 (`html2pdf.m`)；
+   - 底层使用 WebKit 的 `WKWebView` 加载格式化后的静态 HTML 试卷，并通过 `NSPrintOperation` 与 PDFKit 将矢量 DOM 直接合成至物理 PDF 文件，公式文字无损保真、支持光标选中复制。
+2. **Windows 架构**：
+   - 后端调用系统现成的 Microsoft Edge Chromium 引擎无头进程：
+     `msedge.exe --headless --disable-gpu --run-all-compositor-stages-before-draw --print-to-pdf="out.pdf" "temp.html"`
+   - 零额外环境依赖，100% 还原排版，无需用户安装任何虚拟打印机驱动。
 
 ---
 
-### 4.3 智能一页吸附与试卷排版引擎 (Auto-Fit Engine)
+## 五、 跨端工程打包与流水线规范
 
-试卷排版核心痛点是：**综合大题配有复杂表格或电路/装置图，垂直堆叠导致单题高度超标，在 A4 纸张物理边界处断裂。**
+工程所有平台的打包流水线均严格归集至统一的根目录产物文件夹：`release-portable/`。
 
-`src/utils/examFormatter.ts` 实现了三层重构算法：
+### 5.1 自动化打包指令速查
 
-1. **图文左右并排 (Side-by-Side Typesetting)**：
-   - 相邻的 `<table>` 与 `<div class="img">` 自动重构为 `<div class="exam-side-by-side exam-side-table-img">`；
-   - 相邻的 `<div class="options">` 与 `<div class="img">` 自动重构为 `<div class="exam-side-by-side exam-side-options-img">`；
-   - 左右按 `58% : 38%` 对称并排，垂直占用高度直接缩减 **50%**。
-2. **选项长度自适应多列网格**：
-   - 选项文字短（$\le 12$ 字符）：分配 `.options-4-col`（四列紧凑横排）；
-   - 选项文字中等（$\le 26$ 字符）：分配 `.options-2-col`（两列对称排列）；
-   - 选项文字较长（$> 26$ 字符）：分配 `.options-1-col`（纵向独占排列）。
-3. **一页吸附微调 (Auto-Fit Single Page)**：
-   - 开启一页吸附时，动态压缩行高（`1.32`）、段落间距（`2px`）、表格单元格 Padding（`3px 6px`）以及 SVG 图像限高（`135px`），确保整道综合题完美收敛于 A4 物理单页边界内。
+| 目标平台 | 打包指令 | 底层脚本路径 | 输出目标产物 |
+| :--- | :--- | :--- | :--- |
+| **Android** | `npm run package:android` 或 `pnpm run package:android` | `platforms/android/scripts/package-apk.sh` | `release-portable/NaosuNote_0.2.1_app-universal-release-unsigned.apk` |
+| **macOS** | `npm run package:macos` 或 `pnpm run package:macos` | `platforms/macos/scripts/package-app.sh` | `release-portable/NaosuNote_0.2.1.dmg` 与 `NaosuNote.app` |
+| **Windows** | `npm run package:windows` 或 `pnpm run package:windows` | `platforms/windows/scripts/package-portable.ps1` | `release-portable/NaosuNote_0.2.1_x64.exe` 与免安装 Zip |
 
----
+### 5.2 Android 打包高级参数支持
 
-### 4.4 跨平台高保真矢量 PDF 导出与静默打印架构
-
-NaosuNote 彻底杜绝了使用 Canvas 栅格化截屏生成模糊 PDF 的劣质方案，在双平台均实现了**真矢量排版导出**：
-
-```mermaid
-sequenceDiagram
-    participant User as 用户
-    participant PrintView as 前端 PrintView.vue
-    participant IPC as commands::export_pdf_direct
-    participant Platform as platform::mod
-    participant Guard as TempFileGuard (RAII)
-    participant Engine as 系统原生打印管道 (WebKit / Edge)
-
-    User->>PrintView: 点击「直接导出 PDF 试卷」
-    PrintView->>IPC: invoke('export_pdf_direct', { paperHtml, title })
-    IPC->>Platform: export_html_to_pdf(html, dest_path, data_dir)
-    Platform->>Guard: 创建临时文件 _temp_export_*.html 并绑定守卫
-    alt macOS 系统
-        Platform->>Engine: 调用 platforms/macos/bin/html2pdf (WebKit)
-    else Windows 系统
-        Platform->>Engine: 静默调用 msedge.exe --headless=new --print-to-pdf
-    end
-    Engine-->>Platform: 矢量 PDF 生成就绪
-    Platform->>Guard: 作用域退出 -> 自动物理删除临时 HTML
-    Platform-->>IPC: Ok(())
-    IPC-->>PrintView: 返回最终 PDF 路径
-    PrintView-->>User: 桌面轻提示导出成功
-```
-
-#### 关键技术亮点
-
-1. **RAII 临时文件守卫 (`src-tauri/src/platform/common.rs`)**：
-   - 使用 Rust `Drop` 特征实现 `TempFileGuard`。无论导出成功、返回错误抑或遭遇进程 panic，临时生成的 HTML 文件离开作用域必定被物理删除，绝不污染用户磁盘。
-2. **macOS 原生 WebKit/PDFKit 管道 (`src-tauri/src/platform/macos.rs`)**：
-   - 源码收纳于 `platforms/macos/native/html2pdf.m`，由 `build.rs` 编译至 `platforms/macos/bin/html2pdf`；
-   - 采用隐藏 `WKWebView` 加载，等待 600ms 公式字体渲染稳定后，通过 `WKPDFConfiguration` 切片并合并为多页高保真矢量 PDF。
-3. **Windows 系统级 Edge/Chromium 静默管道 (`src-tauri/src/platform/windows.rs`)**：
-   - 级联检索 Edge 默认路径（x86/x64）、`%LOCALAPPDATA%` 与 Chrome 备用路径；
-   - 核心参数调优：
-     - `--headless=new`：启用现代 Chromium 渲染管道；
-     - `--run-all-compositor-stages-before-draw`：强制等待 KaTeX 公式与 SVG 排版收敛完成，防止公式掉字；
-     - `--no-pdf-header-footer`：彻底清除浏览器打印自带的页眉页脚与 URL 杂质；
-     - `CREATE_NO_WINDOW (0x08000000)`：注入 Windows 原生进程标志，彻底杜绝后台调用时黑色 CMD 窗口闪烁。
-
----
-
-### 4.5 Material Design 3 全局色彩系统与深色模式
-
-- 色彩 Token 基于 Google M3 官方规范在 `src/assets/styles/m3-tokens.css` 中建立，全局响应 `[data-theme="dark"]`。
-- **理科图谱深色适配**：错题卡片中的 SVG 矢量图在深色模式下应用 `filter: invert(0.88) hue-rotate(180deg)`，自动反色黑白线条，保持极佳可读性。
-- **试卷物理纸张绝对豁免**：在 `src/views/PrintView.vue` 中，物理纸张画布强制固定纯白底色 (`#ffffff !important`) 与纯黑文本 (`#000000 !important`)，确保导出与打印结果始终符合正式考试标准。
-
----
-
-## 五、 常见技术陷阱与避坑指南 (Crucial Caveats)
-
-### 1. macOS WKWebView 拦截 `window.confirm` 与 `window.alert`
-
-- **现象**：在 macOS WKWebView 下，原生 `window.confirm()` 不会弹出任何系统提示框，直接返回 `false`，导致删除等危险操作静默失效。
-- **强制规则**：**全项目严禁使用原生 `window.confirm` 或 `window.alert`**。所有危险交互必须采用 Vue 响应式驱动的 M3 模态对话框。
-
-### 2. Windows 命令行调用必须消除 CMD 黑色控制台闪烁
-
-- **现象**：在 Windows 下直接使用 `Command::new("cmd")` 唤起浏览器或执行外部程序，屏幕会突兀闪烁一个黑色命令行窗口。
-- **强制规则**：Windows 分支下的所有 `std::process::Command` 必须通过 `std::os::windows::process::CommandExt` 附加 `.creation_flags(0x08000000)` (`CREATE_NO_WINDOW`)。
-
-### 3. 跨平台业务层禁止直接书写平台宏
-
-- **现象**：在 `commands.rs` 或业务中交织大量 `#[cfg(target_os = "...")]` 会导致代码急速腐化。
-- **强制规则**：所有涉及平台特性的逻辑必须下沉到 `src-tauri/src/platform/` 模块内部，上层仅面向 `platform::mod` 的抽象门面编程。
-
-### 4. Rust `format!` 宏中的内联 CSS 花括号转义
-
-- **现象**：在 Rust 原始字符串中直接书写 `:root { ... }` 会被编译器当作格式化占位符引发崩溃。
-- **强制规则**：内联 CSS 字符串中的普通大括号必须双写转义为 `{{` 与 `}}`。
-
-### 5. 多平台文件系统路径清洗
-
-- **现象**：错题本标题包含斜杠 `/`、反斜杠 `\` 或冒号 `:` 时，直接拼接文件名会导致文件写入失败甚至路径穿越。
-- **强制规则**：与本地文件系统交互的文件名必须经过 `MirrorManager::sanitize_filename()` 进行字符净化。
-
----
-
-## 六、 开发调试与跨平台打包构建指令
-
-### 1. 环境准备
-
-- Node.js 18+ 与 pnpm 9+
-- Rust 1.77+ 与 Cargo
-- macOS：系统自带 `clang`
-- Windows：Visual Studio C++ Build Tools (MSVC) 与 Windows 10/11 预装 Microsoft Edge
-
-### 2. 本地日常开发
-
+`package-apk.sh` 支持透传自定义编译参数：
 ```bash
-# 安装前端依赖
-pnpm install
+# 构建全架构通用 Release APK (默认)
+bash platforms/android/scripts/package-apk.sh
 
-# 纯前端开发预览 (运行于 localhost:5173，内置 Mock 数据降级)
-pnpm run dev
+# 构建 Debug 调试 APK
+bash platforms/android/scripts/package-apk.sh --debug
 
-# 启动完整 Tauri 桌面客户端 (支持前后端热重载)
-pnpm run tauri dev
+# 针对指定芯片架构构建 (例如 ARM64)
+bash platforms/android/scripts/package-apk.sh --target aarch64
+
+# 按 ABI 分割构建独立轻量 APK
+bash platforms/android/scripts/package-apk.sh --split-per-abi
 ```
 
-### 3. 质量保障与验证
+---
 
-```bash
-# 前端 TypeScript 类型检查与生产打包验证
-pnpm run build
+## 六、 设计规范与避坑准则 (Coding Standards & Crucial Caveats)
 
-# 后端 Rust 代码语法与跨平台模块检查
-cargo check --manifest-path src-tauri/Cargo.toml
-
-# 运行后端单元测试 (如文本查重算法)
-cargo test --manifest-path src-tauri/Cargo.toml
-```
-
-### 4. 跨平台分发打包
-
-#### macOS 原生应用包打包
-
-```bash
-# 方式 1：通过 pnpm 快捷指令执行
-pnpm run package:macos
-
-# 方式 2：直接执行 Shell 脚本
-./platforms/macos/scripts/package-app.sh
-
-# 产物统一自动归集于根目录：release-portable/
-# - NaosuNote_0.1.0-beta_*.dmg （DMG 安装镜像）
-# - NaosuNote.app               （独立应用程序）
-```
-
-#### Windows x64 单文件应用与绿色免安装版打包
-
-无论宿主机是传统 Intel/AMD x64 还是新一代 ARM64（如高通骁龙 X Elite / Surface Pro 11），脚本均会自动配置并交叉编译标准 `x86_64-pc-windows-msvc` 目标，生成具备全生态兼容性的单文件可执行程序：
-
-```powershell
-# 方式 1：通过 pnpm 快捷指令执行
-pnpm run package:windows
-
-# 方式 2：在 Windows 终端 (PowerShell) 中执行
-.\platforms\windows\scripts\package-portable.ps1
-
-# 方式 3：在 Windows 文件资源管理器中直接双击运行
-platforms\windows\scripts\package-portable.bat
-
-# 产物自动归集于根目录：release-portable/
-# - NaosuNote_0.1.0-beta_x64.exe            （推荐：独立单文件 EXE，开箱双击即用）
-# - NaosuNote_0.1.0-beta_Windows_x64_Portable.zip （便携 Zip 压缩包，含使用说明与预置数据）
-```
-
-*(纯绿色单文件设计：数据库自动保存在用户的个人文档目录 `%USERPROFILE%\Documents\NaosuNoteData`，后续下载任何新版 exe 均无缝衔接历史题库，题库数据永不丢失。)*
+1. **禁止假名与 Emoji 污染**：
+   - 代码内注记、日志输出、UI 提示文本、生成的 HTML 镜像与示例数据中，**严禁添加 Emoji 图标与非规范假名**，严格保持理科试卷与生产级软件的学术风格。
+2. **避免非必要的动态 Import**：
+   - 跨模块静态依赖（例如 `@tauri-apps/api/core`、`src/utils/avatar.ts` 等）应当在文件头部集中进行静态 import，避免在业务函数内使用 `import(...)` 导致 Vite 产生重复 Chunk 警告与首帧微卡顿。
+3. **Tauri IPC Command 声明规范**：
+   - Rust 端接受前端参数较多的 Command 时，须明确声明 `#[allow(clippy::too_many_arguments)]`，同时使用 `Option<T>` 妥善兼容前端可能省略传参的字段。
+4. **数据库连接生命周期控制**：
+   - `rusqlite` 连接必须由 `AppState` 的 `Mutex<DbManager>` 严格控制生命周期，在操作完成后立即释放锁，杜绝在跨 await 异步上下文中持有 MutexGuard 导致线程死锁。
+5. **路径跨端兼容性规范**：
+   - 在 Rust 后端拼接本地持久化路径时，严禁使用硬编码的斜杠或反斜杠，一律使用 `std::path::PathBuf::push`。

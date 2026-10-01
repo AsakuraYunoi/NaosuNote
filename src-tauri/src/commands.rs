@@ -98,38 +98,35 @@ pub fn get_device_info(window: tauri::Window) -> Result<crate::models::DeviceInf
     #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
     {
         let _ = window;
-        return Ok(crate::models::DeviceInfo {
+        Ok(crate::models::DeviceInfo {
             platform: "desktop".into(),
             form_factor: "desktop".into(),
             os: std::env::consts::OS.into(),
             screen_width_dp: 1200.0,
-        });
+        })
     }
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        let size = window.inner_size().unwrap_or(tauri::PhysicalSize::new(0, 0));
-        let scale = window.scale_factor().unwrap_or(1.0);
-        let width_dp = if scale > 0.0 { (size.width as f64) / scale } else { 0.0 };
-        let is_pad = width_dp >= 600.0;
+        let _ = window;
         let os_str = if cfg!(target_os = "ios") { "ios" } else { "android" };
-        return Ok(crate::models::DeviceInfo {
+        Ok(crate::models::DeviceInfo {
             platform: "mobile".into(),
-            form_factor: if is_pad { "pad".into() } else { "phone".into() },
+            form_factor: "phone".into(),
             os: os_str.into(),
-            screen_width_dp: width_dp,
-        });
+            screen_width_dp: 390.0,
+        })
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "android", target_os = "ios")))]
     {
         let _ = window;
-        return Ok(crate::models::DeviceInfo {
+        Ok(crate::models::DeviceInfo {
             platform: "desktop".into(),
             form_factor: "desktop".into(),
             os: "unknown".into(),
             screen_width_dp: 1200.0,
-        });
+        })
     }
 }
 
@@ -137,6 +134,7 @@ pub fn get_device_info(window: tauri::Window) -> Result<crate::models::DeviceInf
 pub fn select_data_dir(state: State<AppState>) -> Result<Option<String>, String> {
     if let Some(folder) = dialog_helper::pick_folder("选择 NaosuNote 数据存放目录") {
         let folder_str = folder.to_string_lossy().to_string();
+        crate::storage::ensure_storage_ready(&folder);
         let db_path = folder.join("naosu.db");
         let new_db = DbManager::new(db_path.to_str().unwrap());
 
@@ -145,11 +143,126 @@ pub fn select_data_dir(state: State<AppState>) -> Result<Option<String>, String>
 
         let db_ref = state.db.lock().unwrap();
         let _ = MirrorManager::sync_all_notebook_mirrors(&db_ref, &folder_str);
+        let _ = crate::storage::save_data_directory(&folder_str);
 
         Ok(Some(folder_str))
     } else {
         Ok(None)
     }
+}
+
+#[tauri::command]
+pub fn set_data_dir(state: State<AppState>, path: String) -> Result<String, String> {
+    let clean_path = path.trim().to_string();
+    if clean_path.is_empty() {
+        return Err("存储路径不能为空".into());
+    }
+
+    let target = std::path::PathBuf::from(&clean_path);
+    crate::storage::ensure_storage_ready(&target);
+
+    let db_path = target.join("naosu.db");
+    let new_db = DbManager::new(db_path.to_str().unwrap());
+
+    *state.data_dir.lock().unwrap() = clean_path.clone();
+    *state.db.lock().unwrap() = new_db;
+
+    let db_ref = state.db.lock().unwrap();
+    let _ = db_ref.ensure_default_notebooks();
+    let _ = MirrorManager::sync_all_notebook_mirrors(&db_ref, &clean_path);
+    let _ = crate::storage::save_data_directory(&clean_path);
+
+    Ok(clean_path)
+}
+
+#[tauri::command]
+pub fn get_storage_options() -> Result<Vec<crate::models::StorageOption>, String> {
+    let mut options = Vec::new();
+
+    #[cfg(target_os = "android")]
+    {
+        options.push(crate::models::StorageOption {
+            id: "android_docs".into(),
+            name: "系统公共文档目录 (Documents)".into(),
+            path: "/storage/emulated/0/Documents/NaosuNoteData".into(),
+            description: "推荐！可通过手机系统「文件」应用直接访问、管理与备份导出".into(),
+            is_recommended: true,
+        });
+        options.push(crate::models::StorageOption {
+            id: "android_internal".into(),
+            name: "应用内部沙盒存储".into(),
+            path: "/data/user/0/online.yunoi.naosunote/files/NaosuNoteData".into(),
+            description: "免外部存储权限，系统级安全隔离，卸载应用时自动清除".into(),
+            is_recommended: false,
+        });
+        options.push(crate::models::StorageOption {
+            id: "android_external_app".into(),
+            name: "外部应用私有目录 (Android/data)".into(),
+            path: "/storage/emulated/0/Android/data/online.yunoi.naosunote/files/NaosuNoteData".into(),
+            description: "外部扩展存储空间，适合大容量配图与数据持久存储".into(),
+            is_recommended: false,
+        });
+    }
+
+    #[cfg(target_os = "ios")]
+    {
+        let doc_path = dirs::document_dir()
+            .map(|p| p.join("NaosuNoteData").to_string_lossy().to_string())
+            .unwrap_or_else(|| "Documents/NaosuNoteData".into());
+        let app_support = dirs::data_dir()
+            .map(|p| p.join("NaosuNoteData").to_string_lossy().to_string())
+            .unwrap_or_else(|| "Library/Application Support/NaosuNoteData".into());
+
+        options.push(crate::models::StorageOption {
+            id: "ios_docs".into(),
+            name: "应用文稿目录 (Documents)".into(),
+            path: doc_path,
+            description: "推荐！支持通过 iOS「文件」App 浏览与隔空投送 (AirDrop)".into(),
+            is_recommended: true,
+        });
+        options.push(crate::models::StorageOption {
+            id: "ios_app_support".into(),
+            name: "应用支持目录 (Application Support)".into(),
+            path: app_support,
+            description: "系统级私有存储，自动包含在 iCloud 整机备份中".into(),
+            is_recommended: false,
+        });
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let doc_path = dirs::document_dir()
+            .map(|p| p.join("NaosuNoteData").to_string_lossy().to_string())
+            .unwrap_or_else(|| "~/Documents/NaosuNoteData".into());
+        let data_path = dirs::data_dir()
+            .map(|p| p.join("NaosuNoteData").to_string_lossy().to_string())
+            .unwrap_or_else(|| "~/Library/Application Support/NaosuNoteData".into());
+
+        options.push(crate::models::StorageOption {
+            id: "desktop_docs".into(),
+            name: "个人文档目录 (Documents)".into(),
+            path: doc_path,
+            description: "推荐！方便在访达或文件资源管理器中直接双击离线单文件镜像".into(),
+            is_recommended: true,
+        });
+        options.push(crate::models::StorageOption {
+            id: "desktop_app_data".into(),
+            name: "应用数据目录 (AppData)".into(),
+            path: data_path,
+            description: "操作系统规范应用数据路径，保持个人文档整洁".into(),
+            is_recommended: false,
+        });
+    }
+
+    options.push(crate::models::StorageOption {
+        id: "custom".into(),
+        name: "自定义绝对路径".into(),
+        path: "".into(),
+        description: "自行指定设备上的有效绝对目录路径".into(),
+        is_recommended: false,
+    });
+
+    Ok(options)
 }
 
 #[tauri::command]
@@ -282,6 +395,7 @@ pub fn export_notebook_html(
 // --- 错题 Commands ---
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn get_problems(
     state: State<AppState>,
     notebook_id: Option<String>,
@@ -408,7 +522,7 @@ pub fn update_problem_content(
                 // 如果题目仍未绑定错题本，查出该学科默认错题本并补绑
                 let nbs = db.get_notebooks().unwrap_or_default();
                 if let Some(matched) = nbs.into_iter().find(|n| n.subject == p.subject) {
-                    let _ = db.batch_move_problems(&[uuid.clone()], &matched.id, &matched.subject);
+                    let _ = db.batch_move_problems(std::slice::from_ref(&uuid), &matched.id, &matched.subject);
                     Some(matched)
                 } else {
                     None

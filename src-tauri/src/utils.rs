@@ -14,11 +14,11 @@ pub fn levenshtein_similarity(s1: &str, s2: &str) -> f64 {
 
     let mut dp = vec![vec![0usize; len2 + 1]; len1 + 1];
 
-    for i in 0..=len1 {
-        dp[i][0] = i;
+    for (i, row) in dp.iter_mut().enumerate() {
+        row[0] = i;
     }
-    for j in 0..=len2 {
-        dp[0][j] = j;
+    for (j, val) in dp[0].iter_mut().enumerate() {
+        *val = j;
     }
 
     for i in 1..=len1 {

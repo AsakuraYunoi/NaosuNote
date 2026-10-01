@@ -236,6 +236,7 @@ impl DbManager {
 
     // --- 错题管理 ---
 
+    #[allow(clippy::too_many_arguments)]
     pub fn get_all_problems(
         &self,
         notebook_id: Option<String>,

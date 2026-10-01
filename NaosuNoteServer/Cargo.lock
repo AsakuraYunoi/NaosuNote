@@ -657,7 +657,7 @@ checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 
 [[package]]
 name = "naosu_note_server"
-version = "0.2.0-beta-v1"
+version = "0.2.1"
 dependencies = [
  "axum",
  "bcrypt",

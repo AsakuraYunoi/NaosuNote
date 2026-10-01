@@ -65,6 +65,15 @@ pub struct DuplicateCheckResult {
     pub existing_problem: Option<Problem>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct StorageOption {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub description: String,
+    pub is_recommended: bool,
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppConfig {

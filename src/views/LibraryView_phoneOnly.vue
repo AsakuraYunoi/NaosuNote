@@ -46,7 +46,7 @@
           title="账号与个人中心"
           @click.stop="$emit('open-profile')"
         >
-          <img :src="avatarImg" alt="用户头像" class="top-avatar-img" />
+          <img :src="userAvatarUrl" alt="用户头像" class="top-avatar-img" />
           <span v-if="isAutoSyncing || isSyncing" class="avatar-sync-dot"></span>
         </button>
       </div>
@@ -612,7 +612,7 @@ import {
   Square,
   Printer,
 } from 'lucide-vue-next';
-import avatarImg from '../assets/avatar.png';
+import { userAvatarUrl } from '../utils/avatar';
 import type { Problem, Notebook, TagCount } from '../types/problem';
 import {
   apiGetProblems,
@@ -622,6 +622,7 @@ import {
   apiCreateNotebook,
   apiUpdateRatings,
   apiSyncCloud,
+  apiSyncAllMirrors,
   apiCreateTag,
   apiRenameTag,
   apiDeleteTag,

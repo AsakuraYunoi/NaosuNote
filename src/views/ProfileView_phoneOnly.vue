@@ -21,15 +21,15 @@
         <!-- 已登录状态 -->
         <div v-if="isLoggedIn" class="user-hero-main">
           <div class="avatar-wrapper">
-            <div class="avatar-ring">
-              <img :src="avatarImg" alt="用户头像" class="user-avatar-img" />
+            <div class="avatar-ring clickable-ring" title="点击更换头像" @click="triggerAvatarUpload">
+              <img :src="userAvatarUrl" alt="用户头像" class="user-avatar-img" />
             </div>
             <button
               class="avatar-edit-badge"
-              :title="isEditing ? '取消编辑' : '编辑个人信息'"
-              @click="toggleEdit"
+              title="更换头像"
+              @click.stop="triggerAvatarUpload"
             >
-              <Pencil :size="12" />
+              <Camera :size="12" />
             </button>
           </div>
 
@@ -37,6 +37,9 @@
             <!-- 昵称展示与行内编辑 -->
             <div v-if="!isEditing" class="name-row">
               <h2 class="user-name">{{ profileName }}</h2>
+              <button class="inline-edit-btn" title="编辑用户名" @click="toggleEdit">
+                <Pencil :size="12" />
+              </button>
             </div>
             <div v-else class="edit-row">
               <input
@@ -80,22 +83,67 @@
           </div>
         </div>
 
-        <!-- 未登录状态 -->
+        <!-- 未登录状态 (本地模式) -->
         <div v-else class="user-hero-main logged-out-main">
-          <div class="avatar-wrapper guest-wrapper">
-            <div class="avatar-ring guest-ring">
-              <CircleUserRound :size="48" class="guest-avatar-icon" />
+          <div class="avatar-wrapper">
+            <div class="avatar-ring clickable-ring" title="点击更换头像" @click="triggerAvatarUpload">
+              <img :src="userAvatarUrl" alt="用户头像" class="user-avatar-img" />
             </div>
+            <button
+              class="avatar-edit-badge"
+              title="更换头像"
+              @click.stop="triggerAvatarUpload"
+            >
+              <Camera :size="12" />
+            </button>
           </div>
           <div class="user-info-text">
-            <h2 class="user-name guest-name">未登录账号</h2>
-            <p class="guest-desc">登录后可享受多端自动同步与配图云备份</p>
-            <button class="btn-login-hero" @click="showLoginModal = true">
-              <LogIn :size="15" />
+            <div v-if="!isEditing" class="name-row">
+              <h2 class="user-name">{{ profileName || '本地用户' }}</h2>
+              <button class="inline-edit-btn" title="编辑用户名" @click="toggleEdit">
+                <Pencil :size="12" />
+              </button>
+            </div>
+            <div v-else class="edit-row">
+              <input
+                ref="nameInputRef"
+                v-model="tempName"
+                class="edit-input"
+                placeholder="输入用户名"
+                maxlength="20"
+                @keydown.enter="saveProfile"
+              />
+            </div>
+
+            <div class="email-row">
+              <span class="user-email guest-sub">本地离线存储 · 数据保存在本机</span>
+            </div>
+
+            <div class="badges-row">
+              <span class="status-pill local-pill">
+                <span class="dot-local"></span>
+                <span>本地模式</span>
+              </span>
+            </div>
+
+            <div v-if="isEditing" class="edit-action-btns">
+              <button class="btn-save-edit" @click="saveProfile">保存修改</button>
+              <button class="btn-cancel-edit" @click="cancelEdit">取消</button>
+            </div>
+
+            <button v-if="!isEditing" class="btn-login-hero" @click="showLoginModal = true">
+              <LogIn :size="14" />
               <span>登录 / 注册 Naosu 账号</span>
             </button>
           </div>
         </div>
+        <input
+          ref="avatarInputRef"
+          type="file"
+          accept="image/*"
+          style="display: none"
+          @change="handleAvatarFileChange"
+        />
       </div>
 
       <!-- 2. 本地数据与资产总览 (Local Data Statistics) -->
@@ -234,24 +282,25 @@
           <div class="login-header">
             <img src="/favicon.svg" alt="NaosuNote" class="login-brand-logo" draggable="false" />
             <h3>登录 Naosu 账号</h3>
-            <p>选择本机凭据或输入注册信息一键登录</p>
+            <p>登录后可享受多端自动同步与配图云备份</p>
           </div>
 
-          <!-- 快速一键登录卡片 -->
+          <!-- 快速账号卡片 (仅当曾登录并存有本地凭据时展示，绝不硬编码预设) -->
           <div
+            v-if="savedProfileUser"
             class="quick-login-card"
             :class="{ 'is-loading': isLoggingIn }"
-            @click="performFakeLogin('ゆのい 朝倉', 'As.Yunoi@outlook.jp')"
+            @click="fillSavedAccount(savedProfileUser)"
           >
-            <img :src="avatarImg" alt="头像" class="quick-avatar" />
+            <img :src="userAvatarUrl" :alt="savedProfileUser.nickname || '用户'" class="quick-avatar" />
             <div class="quick-meta">
-              <span class="quick-name">ゆのい 朝倉</span>
-              <span class="quick-email">As.Yunoi@outlook.jp</span>
+              <span class="quick-name">{{ savedProfileUser.nickname || '历史账号' }}</span>
+              <span class="quick-email">{{ savedProfileUser.identifier || '' }}</span>
             </div>
-            <span class="quick-badge">本机凭据</span>
+            <span class="quick-badge">快捷填入</span>
           </div>
 
-          <div class="login-sep">
+          <div v-if="savedProfileUser" class="login-sep">
             <span>或使用账号密码</span>
           </div>
 
@@ -299,8 +348,9 @@ import {
   Database,
   Folder,
   FileCode,
+  Camera,
 } from 'lucide-vue-next';
-import avatarImg from '../assets/avatar.png';
+import { userAvatarUrl, apiUploadUserAvatar } from '../utils/avatar';
 import {
   apiGetProblems,
   apiGetNotebooks,
@@ -319,19 +369,64 @@ const emit = defineEmits<{
   (e: 'notify', msg: string): void;
 }>();
 
-// 登录与个人信息状态
-const isLoggedIn = ref(true);
+// 登录与个人信息状态 - 默认未登录，本地模式
+const isLoggedIn = ref(false);
 const isLoggingIn = ref(false);
 const showLoginModal = ref(false);
 const customLoginEmail = ref('');
 const customLoginPassword = ref('');
 
-const profileName = ref('ゆのい 朝倉');
-const profileEmail = ref('As.Yunoi@outlook.jp');
+// 用户资料 - 头像与用户名均可自由自定义，无特定预设
+const profileName = ref('本地用户');
+const profileEmail = ref('');
 const tempName = ref('');
 const tempEmail = ref('');
 const isEditing = ref(false);
 const nameInputRef = ref<HTMLInputElement | null>(null);
+const avatarInputRef = ref<HTMLInputElement | null>(null);
+const isUploadingAvatar = ref(false);
+
+const savedProfileUser = computed(() => {
+  if (typeof window === 'undefined') return null;
+  const raw = localStorage.getItem('naosu_user_profile');
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+});
+
+function triggerAvatarUpload() {
+  avatarInputRef.value?.click();
+}
+
+async function handleAvatarFileChange(e: Event) {
+  const target = e.target as HTMLInputElement;
+  const file = target.files?.[0];
+  if (!file) return;
+
+  isUploadingAvatar.value = true;
+  emit('notify', '正在处理并更新头像...');
+  try {
+    const success = await apiUploadUserAvatar(file);
+    if (success) {
+      emit('notify', '头像更新成功！');
+    }
+  } catch (err: any) {
+    emit('notify', '头像更新失败: ' + (err?.message || err));
+  } finally {
+    isUploadingAvatar.value = false;
+    target.value = '';
+  }
+}
+
+function fillSavedAccount(user: any) {
+  if (user?.identifier) {
+    customLoginEmail.value = user.identifier;
+  }
+  emit('notify', `已选择账号：${user?.nickname || user?.identifier}，请输入密码`);
+}
 
 // 数据统计
 const loadingStats = ref(false);
@@ -346,7 +441,7 @@ const actualDataSizeBytes = ref(0);
 // 同步状态
 const isSyncing = ref(false);
 const isSyncingMirrors = ref(false);
-const lastSyncTimeText = ref('今天 10:48');
+const lastSyncTimeText = ref('未同步');
 
 // 存储计算 (200MB)
 const TOTAL_STORAGE_CAPACITY_BYTES = 200 * 1024 * 1024;
@@ -373,9 +468,9 @@ const storagePercentText = computed(() => {
 });
 
 onMounted(() => {
-  // 加载本地凭据
+  // 加载本地凭据 - 默认未登录，仅当值为 'true' 时判定登录
   const savedLogin = localStorage.getItem('naosu_is_logged_in');
-  isLoggedIn.value = savedLogin !== 'false';
+  isLoggedIn.value = savedLogin === 'true';
 
   const savedName = localStorage.getItem('naosu_user_name');
   if (savedName) profileName.value = savedName;
@@ -499,24 +594,6 @@ async function handleSyncMirrors() {
   }
 }
 
-async function performFakeLogin(name: string, email: string) {
-  isLoggingIn.value = true;
-  try {
-    profileName.value = name;
-    profileEmail.value = email;
-    isLoggedIn.value = true;
-    localStorage.setItem('naosu_is_logged_in', 'true');
-    localStorage.setItem('naosu_user_name', name);
-    localStorage.setItem('naosu_user_email', email);
-
-    showLoginModal.value = false;
-    emit('notify', `已成功登录 Naosu 账号「${name}」`);
-    await refreshData();
-  } finally {
-    isLoggingIn.value = false;
-  }
-}
-
 async function handleRealLogin() {
   if (!customLoginEmail.value.trim() || !customLoginPassword.value) return;
   isLoggingIn.value = true;
@@ -541,10 +618,10 @@ async function handleRealLogin() {
 
 async function handleLogout() {
   try {
-    await apiLogout().catch(() => {});
+    apiLogout();
     isLoggedIn.value = false;
     localStorage.setItem('naosu_is_logged_in', 'false');
-    emit('notify', '已退出当前账号');
+    emit('notify', '已退出当前账号，已切换为本地模式');
   } catch (e: any) {
     emit('notify', '退出失败: ' + (e?.message || e));
   }
@@ -670,6 +747,38 @@ async function handleLogout() {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+}
+
+.clickable-ring {
+  cursor: pointer;
+}
+
+.inline-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background-color: var(--md-sys-color-surface-variant);
+  color: var(--md-sys-color-primary);
+  margin-left: 6px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.local-pill {
+  background-color: var(--md-sys-color-surface-container-high) !important;
+  color: var(--md-sys-color-primary) !important;
+  border: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.dot-local {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--md-sys-color-primary);
 }
 
 .user-info-text {

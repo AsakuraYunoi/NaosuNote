@@ -41,7 +41,7 @@
       >
         <img :src="userAvatarUrl" alt="用户头像" class="nav-avatar-img" />
       </button>
-      <span class="version-tag">beta0.2.0-v1</span>
+      <span class="version-tag">v0.2.1</span>
     </div>
   </nav>
 </template>

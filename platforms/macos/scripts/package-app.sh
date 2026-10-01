@@ -19,21 +19,40 @@ echo -e "${CYAN}====================================================${NC}"
 echo -e "${CYAN}      NaosuNote macOS 应用一键打包流水线            ${NC}"
 echo -e "${CYAN}====================================================${NC}"
 
-# 1. 环境依赖检测
+# 0. 版本号检测
+VERSION="0.2.1"
+if [ -f "package.json" ]; then
+    DETECTED_VER=$(grep -m 1 '"version"' package.json | awk -F '"' '{print $4}')
+    if [ -n "$DETECTED_VER" ]; then
+        VERSION="$DETECTED_VER"
+    fi
+fi
+echo -e "当前打包版本: ${YELLOW}v${VERSION}${NC}"
+
+# 1. 环境依赖检测 (兼容 pnpm 与 npm)
 echo -e "\n${CYAN}>>> [1/4] 正在检查构建环境...${NC}"
 command -v node >/dev/null 2>&1 || { echo -e "${RED}错误: 未检测到 Node.js，请先安装 Node.js${NC}"; exit 1; }
-command -v pnpm >/dev/null 2>&1 || { echo -e "${RED}错误: 未检测到 pnpm，请先运行 npm install -g pnpm${NC}"; exit 1; }
+
+PKG_MANAGER=""
+if command -v pnpm >/dev/null 2>&1; then
+    PKG_MANAGER="pnpm"
+elif command -v npm >/dev/null 2>&1; then
+    PKG_MANAGER="npm"
+else
+    echo -e "${RED}错误: 未检测到 pnpm 或 npm 包管理器${NC}"; exit 1;
+fi
+
 command -v cargo >/dev/null 2>&1 || { echo -e "${RED}错误: 未检测到 Rust/Cargo，请先安装 Rust${NC}"; exit 1; }
-echo -e "${GREEN}✓ 环境检测通过：Node $(node -v), pnpm $(pnpm -v), Rust $(rustc --version | awk '{print $2}')${NC}"
+echo -e "${GREEN}✓ 环境检测通过：Node $(node -v), ${PKG_MANAGER}, Rust $(rustc --version | awk '{print $2}')${NC}"
 
 # 2. 构建前端生产包
 echo -e "\n${CYAN}>>> [2/4] 正在构建前端生产包 (Vite)...${NC}"
-pnpm run build
+$PKG_MANAGER run build
 
 # 3. 驱动 Tauri 构建 macOS Bundle (.app 和 .dmg)
 echo -e "\n${CYAN}>>> [3/4] 正在编译 Rust 后端并封装 macOS 镜像 (.dmg)...${NC}"
 # 传入 "$@" 支持用户附加自定义参数，例如 --target universal-apple-darwin
-pnpm run tauri build --no-sign "$@"
+$PKG_MANAGER run tauri build --no-sign "$@"
 
 # 4. 汇总打包产物至 release-portable/
 echo -e "\n${CYAN}>>> [4/4] 正在归集发布产物至 release-portable/...${NC}"

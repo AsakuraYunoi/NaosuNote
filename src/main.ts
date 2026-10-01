@@ -42,6 +42,7 @@ try {
 
 window.addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
+  if (typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) return;
   const target = e.target as HTMLElement | null;
   if (!target) return;
 
@@ -69,14 +70,21 @@ window.addEventListener('mousedown', (e) => {
 });
 
 async function bootstrap() {
-  // 1. 通过 Rust 底层或视口环境检测硬件设备形态
+  // 1. 通过原生硬件、UA 与视口环境精确检测设备形态
   const deviceInfo = await apiGetDeviceInfo();
   console.log('[NaosuNote] Initialized device info:', deviceInfo);
 
-  // 2. 根据用户架构规则分流：
-  //    - Phone (<600dp 手机): 挂载全新的 App_phoneOnly.vue
-  //    - Desktop / Pad (桌面端与平板端): 挂载原有经充分打磨的 App.vue
-  const RootComponent = deviceInfo.form_factor === 'phone' ? AppPhone : AppDesktop;
+  // 2. 移动端与桌面端分流挂载：
+  //    - 只要是 Android、iOS 手机或视口宽度 < 768px 的移动触控环境，强制挂载移动端适配根组件 AppPhone
+  //    - 桌面端 (macOS/Windows/Linux) 挂载包含多窗口与侧边栏的桌面组件 AppDesktop
+  const isMobile =
+    deviceInfo.form_factor === 'phone' ||
+    deviceInfo.os === 'android' ||
+    deviceInfo.os === 'ios' ||
+    deviceInfo.platform === 'mobile' ||
+    (typeof window !== 'undefined' && (/Android|iPhone|iPod/i.test(navigator.userAgent) || window.innerWidth < 768));
+
+  const RootComponent = isMobile ? AppPhone : AppDesktop;
 
   createApp(RootComponent).mount('#app');
 }

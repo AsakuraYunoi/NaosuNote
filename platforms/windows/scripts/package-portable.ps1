@@ -23,15 +23,22 @@ Write-Host "====================================================" -ForegroundCol
 # 1. 检测宿主机环境与架构
 Write-Step "[1/5] 检查构建环境与目标兼容架构..."
 
-# 检查 Node / pnpm / cargo
+# 检查 Node / 包管理器 / cargo
 if (-not (Get-Command "node" -ErrorAction SilentlyContinue)) {
     Write-Error "未检测到 Node.js，请先安装 Node.js (https://nodejs.org)"
     exit 1
 }
-if (-not (Get-Command "pnpm" -ErrorAction SilentlyContinue)) {
-    Write-Error "未检测到 pnpm，请运行 npm install -g pnpm"
+
+$PkgManager = ""
+if (Get-Command "pnpm" -ErrorAction SilentlyContinue) {
+    $PkgManager = "pnpm"
+} elseif (Get-Command "npm" -ErrorAction SilentlyContinue) {
+    $PkgManager = "npm"
+} else {
+    Write-Error "未检测到 pnpm 或 npm 包管理器"
     exit 1
 }
+
 if (-not (Get-Command "cargo" -ErrorAction SilentlyContinue)) {
     Write-Error "未检测到 Rust/Cargo，请先安装 Rust (https://rustup.rs)"
     exit 1
@@ -40,6 +47,7 @@ if (-not (Get-Command "cargo" -ErrorAction SilentlyContinue)) {
 # 识别宿主机硬件架构
 $HostArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
 Write-Host "宿主机 Windows 架构: $HostArch" -ForegroundColor Gray
+Write-Host "包管理器: $PkgManager" -ForegroundColor Gray
 Write-Host "目标构建架构: $Target (具备通用 x64 / ARM64 模拟兼容性)" -ForegroundColor Gray
 
 # 无论当前宿主机是 ARM64（骁龙 X Elite / Surface 等）还是 x64，自动确保安装 x86_64 编译目标
@@ -55,7 +63,7 @@ if (Get-Command "rustup" -ErrorAction SilentlyContinue) {
 }
 
 # 读取 package.json 获取版本号
-$Version = "0.1.0-beta"
+$Version = "0.2.1"
 if (Test-Path "package.json") {
     try {
         $PkgJson = Get-Content "package.json" -Raw | ConvertFrom-Json
@@ -69,7 +77,7 @@ if (Test-Path "package.json") {
 
 # 2. 构建前端生产资源
 Write-Step "[2/5] 正在构建前端生产包 (Vite)..."
-pnpm run build
+& $PkgManager run build
 Write-Success "前端生产包构建完成 (dist/)"
 
 # 3. 编译后端 Rust 程序 (生成 x64 二进制)

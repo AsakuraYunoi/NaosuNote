@@ -29,6 +29,8 @@ pub fn run() {
         .plugin(tauri_plugin_log::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             get_data_dir,
+            set_data_dir,
+            get_storage_options,
             get_data_size,
             get_device_info,
             select_data_dir,

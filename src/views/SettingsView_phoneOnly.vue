@@ -239,12 +239,22 @@
         </div>
       </div>
     </div>
+
+    <!-- Storage Directory Selection & Change Modal -->
+    <StorageDirModal_phoneOnly
+      :open="showStorageModal"
+      :current-dir="currentDataDir"
+      @close="showStorageModal = false"
+      @saved="onStorageDirSaved"
+      @notify="emit('notify', $event)"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import type { Notebook } from '../types/problem';
+import StorageDirModal_phoneOnly from '../components/StorageDirModal_phoneOnly.vue';
 import {
   apiGetDataDir,
   apiSelectDataDir,
@@ -282,6 +292,7 @@ const emit = defineEmits<{
 }>();
 
 const currentDataDir = ref('');
+const showStorageModal = ref(false);
 const notebooks = ref<Notebook[]>([]);
 const nbToDelete = ref<Notebook | null>(null);
 const nbToRename = ref<Notebook | null>(null);
@@ -331,17 +342,13 @@ async function handleOpenDir() {
   }
 }
 
-async function handleSelectDir() {
-  try {
-    const chosen = await apiSelectDataDir();
-    if (chosen) {
-      currentDataDir.value = chosen;
-      emit('notify', `数据保存目录已更改为: ${chosen}`);
-      await loadData();
-    }
-  } catch (e: any) {
-    emit('notify', '切换目录失败: ' + (e?.message || e));
-  }
+function handleSelectDir() {
+  showStorageModal.value = true;
+}
+
+async function onStorageDirSaved(newPath: string) {
+  currentDataDir.value = newPath;
+  await loadData();
 }
 
 async function handleSyncMirrors() {

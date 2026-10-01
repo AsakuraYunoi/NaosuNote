@@ -10,15 +10,16 @@ import type {
   ProfileSummary,
 } from '../types/problem';
 import { INITIAL_PROBLEMS } from './seedData';
+import { invoke, isTauri } from '@tauri-apps/api/core';
+import { setRemoteAvatarUrl } from './avatar';
 
 let invokeTauri: any = null;
 
 async function getInvoke() {
   if (invokeTauri) return invokeTauri;
   try {
-    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
-      const tauri = await import('@tauri-apps/api/core');
-      invokeTauri = tauri.invoke;
+    if (typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || isTauri())) {
+      invokeTauri = invoke;
     }
   } catch (e) {
     console.warn('Running outside Tauri environment, fallback active', e);
@@ -44,12 +45,153 @@ let mockStorage: Problem[] = INITIAL_PROBLEMS.map((p) => {
 
 let mockCustomTags: string[] = [];
 
+export interface StorageOption {
+  id: string;
+  name: string;
+  path: string;
+  description: string;
+  is_recommended: boolean;
+}
+
 export async function apiGetDataDir(): Promise<string> {
   const invoke = await getInvoke();
   if (invoke) {
-    return await invoke('get_data_dir');
+    try {
+      const dir: string = await invoke('get_data_dir');
+      if (dir) return dir;
+    } catch (e) {
+      console.warn('apiGetDataDir invoke error:', e);
+    }
   }
-  return '/Users/yunoi/Documents/Code/NaosuNote/data';
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('naosu_data_dir');
+    if (saved) return saved;
+  }
+  const dev = await apiGetDeviceInfo().catch(() => null);
+  if (dev?.os === 'android') {
+    return '/storage/emulated/0/Documents/NaosuNoteData';
+  }
+  if (dev?.os === 'ios') {
+    return 'Documents/NaosuNoteData';
+  }
+  return '~/Documents/NaosuNoteData';
+}
+
+export async function apiSetDataDir(path: string): Promise<string> {
+  const cleanPath = path.trim();
+  if (!cleanPath) throw new Error('保存目录路径不能为空');
+
+  const invoke = await getInvoke();
+  if (invoke) {
+    const res: string = await invoke('set_data_dir', { path: cleanPath });
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('naosu_data_dir', res);
+    }
+    return res;
+  }
+
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('naosu_data_dir', cleanPath);
+  }
+  return cleanPath;
+}
+
+export async function apiGetStorageOptions(): Promise<StorageOption[]> {
+  const invoke = await getInvoke();
+  if (invoke) {
+    try {
+      const opts: StorageOption[] = await invoke('get_storage_options');
+      if (Array.isArray(opts) && opts.length > 0) {
+        return opts;
+      }
+    } catch (e) {
+      console.warn('apiGetStorageOptions invoke error:', e);
+    }
+  }
+
+  const dev = await apiGetDeviceInfo().catch(() => null);
+  if (dev?.os === 'android' || (typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent))) {
+    return [
+      {
+        id: 'android_docs',
+        name: '系统公共文档目录 (Documents)',
+        path: '/storage/emulated/0/Documents/NaosuNoteData',
+        description: '推荐！可通过手机系统「文件」应用直接访问、管理与备份导出',
+        is_recommended: true,
+      },
+      {
+        id: 'android_internal',
+        name: '应用内部沙盒存储',
+        path: '/data/user/0/online.yunoi.naosunote/files/NaosuNoteData',
+        description: '免外部存储权限，系统级安全隔离，卸载应用时自动清除',
+        is_recommended: false,
+      },
+      {
+        id: 'android_external_app',
+        name: '外部应用私有目录 (Android/data)',
+        path: '/storage/emulated/0/Android/data/online.yunoi.naosunote/files/NaosuNoteData',
+        description: '外部扩展存储空间，适合大容量配图与离线镜像存储',
+        is_recommended: false,
+      },
+      {
+        id: 'custom',
+        name: '自定义绝对路径',
+        path: '',
+        description: '自行指定设备上的有效绝对目录路径',
+        is_recommended: false,
+      },
+    ];
+  }
+
+  if (dev?.os === 'ios' || (typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent))) {
+    return [
+      {
+        id: 'ios_docs',
+        name: '应用文稿目录 (Documents)',
+        path: 'Documents/NaosuNoteData',
+        description: '推荐！支持通过 iOS「文件」App 浏览与隔空投送 (AirDrop)',
+        is_recommended: true,
+      },
+      {
+        id: 'ios_app_support',
+        name: '应用支持目录 (Application Support)',
+        path: 'Library/Application Support/NaosuNoteData',
+        description: '系统级私有存储，自动包含在 iCloud 整机备份中',
+        is_recommended: false,
+      },
+      {
+        id: 'custom',
+        name: '自定义绝对路径',
+        path: '',
+        description: '自行指定设备上的有效绝对目录路径',
+        is_recommended: false,
+      },
+    ];
+  }
+
+  return [
+    {
+      id: 'desktop_docs',
+      name: '个人文档目录 (Documents)',
+      path: '~/Documents/NaosuNoteData',
+      description: '推荐！方便在访达或文件资源管理器中直接双击离线单文件镜像',
+      is_recommended: true,
+    },
+    {
+      id: 'desktop_app_data',
+      name: '应用数据目录 (AppData)',
+      path: '~/Library/Application Support/NaosuNoteData',
+      description: '操作系统规范应用数据路径，保持个人文档整洁',
+      is_recommended: false,
+    },
+    {
+      id: 'custom',
+      name: '自定义绝对路径',
+      path: '',
+      description: '自行指定设备上的有效绝对目录路径',
+      is_recommended: false,
+    },
+  ];
 }
 
 export async function apiGetDataSize(): Promise<number> {
@@ -756,14 +898,50 @@ export async function apiGetDeviceInfo(): Promise<DeviceInfo> {
         screen_width_dp: savedForce === 'phone' ? 390 : 1024,
       };
     }
+
+    // 2. 浏览器/WebView 原生特性与 UserAgent 高精度探测
+    const ua = navigator.userAgent || '';
+    const isAndroid = /Android/i.test(ua);
+    const isIOSPhone = /iPhone|iPod/i.test(ua);
+    const isIPad = /iPad/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const viewportWidth = window.innerWidth || 390;
+    const minScreen = Math.min(window.screen.width || 390, window.screen.height || 844);
+
+    if (isAndroid) {
+      const isPhone = /Mobile/i.test(ua) || viewportWidth < 768 || minScreen < 600;
+      return {
+        platform: 'mobile',
+        form_factor: isPhone ? 'phone' : 'pad',
+        os: 'android',
+        screen_width_dp: viewportWidth,
+      };
+    }
+
+    if (isIOSPhone) {
+      return {
+        platform: 'mobile',
+        form_factor: 'phone',
+        os: 'ios',
+        screen_width_dp: viewportWidth,
+      };
+    }
+
+    if (isIPad) {
+      return {
+        platform: 'mobile',
+        form_factor: 'pad',
+        os: 'ios',
+        screen_width_dp: viewportWidth,
+      };
+    }
   }
 
-  // 2. 调用底层 Rust 读取原生硬件信息
+  // 3. 调用底层 Rust 读取原生硬件信息
   const invoke = await getInvoke();
   if (invoke) {
     try {
       const info: DeviceInfo = await invoke('get_device_info');
-      if (info && info.form_factor) {
+      if (info && info.platform) {
         return info;
       }
     } catch (e) {
@@ -771,13 +949,11 @@ export async function apiGetDeviceInfo(): Promise<DeviceInfo> {
     }
   }
 
-  // 3. 浏览器纯前端兜底探测 (根据视口宽度自适应)
+  // 4. 视口宽度兜底自适应 (桌面浏览器缩放调试等场景)
   if (typeof window !== 'undefined') {
     const width = window.innerWidth;
-    if (width < 640) {
+    if (width < 768) {
       return { platform: 'mobile', form_factor: 'phone', os: 'web', screen_width_dp: width };
-    } else if (width < 1024) {
-      return { platform: 'mobile', form_factor: 'pad', os: 'web', screen_width_dp: width };
     }
   }
 
@@ -853,9 +1029,7 @@ export async function apiLogin(
     localStorage.setItem('naosu_user_email', user.identifier);
     localStorage.setItem('naosu_user_profile', JSON.stringify(user));
     if (user.avatar_url) {
-      import('./avatar').then(({ setRemoteAvatarUrl }) => {
-        setRemoteAvatarUrl(user.avatar_url);
-      }).catch(() => {});
+      setRemoteAvatarUrl(user.avatar_url);
     }
   }
 
@@ -1132,7 +1306,6 @@ export async function apiSyncCloud(
   try {
     const summary = await apiGetProfileSummary();
     if (summary.avatar_url) {
-      const { setRemoteAvatarUrl } = await import('./avatar');
       setRemoteAvatarUrl(summary.avatar_url);
     }
   } catch (avErr) {

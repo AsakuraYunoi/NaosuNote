@@ -1,6 +1,6 @@
 {
   "name": "naosunote",
-  "version": "0.2.0-beta-v1",
+  "version": "0.2.1",
   "description": "",
   "main": "index.js",
   "type": "module",
@@ -11,7 +11,8 @@
     "tauri": "tauri",
     "icon": "tauri icon src-tauri/app-icon.svg",
     "package:macos": "bash platforms/macos/scripts/package-app.sh",
-    "package:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File platforms/windows/scripts/package-portable.ps1"
+    "package:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File platforms/windows/scripts/package-portable.ps1",
+    "package:android": "bash platforms/android/scripts/package-apk.sh"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

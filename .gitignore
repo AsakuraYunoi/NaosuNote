@@ -13,6 +13,7 @@ release-macos/
 target/
 **/target/
 src-tauri/target/
+src-tauri/gen/
 NaosuNoteServer/target/
 NaosuNoteServer/uploads/
 NaosuNoteServer/logs/

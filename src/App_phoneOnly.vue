@@ -84,6 +84,15 @@
       :message="toastMsg"
       @close="toastVisible = false"
     />
+
+    <!-- Initial Storage Persistence Directory Setup Modal -->
+    <StorageDirModal_phoneOnly
+      :open="showInitialStorageModal"
+      :is-initial-setup="true"
+      @close="showInitialStorageModal = false"
+      @saved="onInitialStorageDirSaved"
+      @notify="showToast"
+    />
   </div>
 </template>
 
@@ -97,6 +106,7 @@ import PrintView_phoneOnly from './views/PrintView_phoneOnly.vue';
 import SettingsView_phoneOnly from './views/SettingsView_phoneOnly.vue';
 import ProblemDetailView_phoneOnly from './views/problem-detail/ProblemDetailView_phoneOnly.vue';
 import ProfileView_phoneOnly from './views/ProfileView_phoneOnly.vue';
+import StorageDirModal_phoneOnly from './components/StorageDirModal_phoneOnly.vue';
 import Toast from './components/Toast.vue';
 import { apiSyncAllMirrors, apiSyncCloud } from './utils/api';
 
@@ -106,6 +116,12 @@ const transitionName = ref('mobile-crossfade');
 const editingProblem = ref<Problem | null>(null);
 const printCart = ref<Problem[]>([]);
 const isAutoSyncing = ref(false);
+const showInitialStorageModal = ref(false);
+
+function onInitialStorageDirSaved(path: string) {
+  showInitialStorageModal.value = false;
+  showToast(`已成功配置设备持久化目录：${path}`);
+}
 
 watch(currentTab, (newTab, oldTab) => {
   if (newTab === 'problem-detail' || newTab === 'profile') {
@@ -125,6 +141,12 @@ const toastVisible = ref(false);
 const toastMsg = ref('');
 
 onMounted(async () => {
+  // 检查移动端是否已选择持久化目录
+  const hasSelectedDir = localStorage.getItem('naosu_storage_dir_selected');
+  if (hasSelectedDir !== 'true') {
+    showInitialStorageModal.value = true;
+  }
+
   try {
     await apiSyncAllMirrors();
   } catch (e) {

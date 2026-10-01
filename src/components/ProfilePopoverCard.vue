@@ -55,6 +55,9 @@
               <div class="profile-info-col">
                 <div v-if="!isEditing" class="name-row">
                   <span class="user-name" :title="profileName">{{ profileName }}</span>
+                  <button class="btn-edit-inline" title="编辑用户名" @click="toggleEdit">
+                    <Pencil :size="13" />
+                  </button>
                 </div>
                 <div v-else class="edit-name-row">
                   <input
@@ -97,35 +100,59 @@
               </button>
             </div>
 
-            <!-- 状态 B: 未登录状态 (伪登录展示) -->
+            <!-- 状态 B: 未登录状态 (本地模式) -->
             <div v-else class="profile-main-row logged-out-row">
-              <div class="avatar-ring-container guest-avatar-wrap">
-                <div class="avatar-ring guest-ring">
-                  <CircleUserRound :size="38" class="guest-avatar-icon" />
+              <div class="avatar-ring-container">
+                <div class="avatar-ring clickable-avatar" title="点击更换头像" @click="triggerAvatarUpload">
+                  <img :src="userAvatarUrl" alt="用户头像" class="user-avatar-img" />
+                  <div class="avatar-hover-mask">
+                    <Camera :size="16" class="camera-icon" />
+                  </div>
                 </div>
+                <button
+                  class="avatar-edit-badge"
+                  title="更换头像"
+                  @click.stop="triggerAvatarUpload"
+                >
+                  <Camera :size="11" />
+                </button>
               </div>
 
               <div class="profile-info-col">
-                <div class="name-row">
-                  <span class="user-name guest-name">未登录账号</span>
+                <div v-if="!isEditing" class="name-row">
+                  <span class="user-name" :title="profileName">{{ profileName || '本地用户' }}</span>
+                  <button class="btn-edit-inline" title="编辑用户名" @click="toggleEdit">
+                    <Pencil :size="13" />
+                  </button>
                 </div>
+                <div v-else class="edit-name-row">
+                  <input
+                    ref="nameInputRef"
+                    v-model="tempName"
+                    class="edit-input name-input"
+                    placeholder="输入用户名"
+                    maxlength="20"
+                    @keydown.enter="saveProfile"
+                  />
+                </div>
+
                 <div class="email-row">
-                  <span class="user-email guest-sub">登录后启用多端同步</span>
+                  <span class="user-email guest-sub">数据保存在本机 · 未绑定云端账号</span>
                 </div>
                 <div class="tag-row">
-                  <span class="guest-pill">离线模式</span>
+                  <span class="guest-pill local-mode-pill">本地模式</span>
                 </div>
               </div>
 
               <!-- 快捷登录主按钮 -->
               <button class="btn-login-hero" @click="openLoginModal">
                 <LogIn :size="14" />
-                <span>登录</span>
+                <span>登录 / 注册</span>
               </button>
             </div>
 
             <!-- Inline Edit Action Buttons -->
-            <div v-if="isLoggedIn && isEditing" class="edit-actions-bar">
+            <div v-if="isEditing" class="edit-actions-bar">
               <button class="edit-btn btn-save" @click="saveProfile">保存修改</button>
               <button class="edit-btn btn-cancel" @click="cancelEdit">取消</button>
             </div>
@@ -267,24 +294,25 @@
                     <img src="/favicon.svg" alt="NaosuNote" class="login-brand-icon" draggable="false" />
                   </div>
                   <h4 class="login-title">登录 Naosu 账号</h4>
-                  <p class="login-desc">选择已有凭据或一键授权登录</p>
+                  <p class="login-desc">登录后即可同步错题本与配图至云端</p>
                 </div>
 
-                <!-- 账号选择卡片 (Google 风格一键登录) -->
+                <!-- 快捷账号卡片 (仅当本地存有上次登录凭据时展示，绝不硬编码预设) -->
                 <div
+                  v-if="savedProfileUser"
                   class="quick-account-card"
                   :class="{ 'is-loading': isLoggingIn }"
-                  @click="performFakeLogin('ゆのい 朝倉', 'As.Yunoi@outlook.jp')"
+                  @click="fillSavedAccount(savedProfileUser)"
                 >
-                  <img :src="userAvatarUrl" alt="ゆのい 朝倉" class="quick-account-avatar" />
+                  <img :src="userAvatarUrl" :alt="savedProfileUser.nickname || '用户'" class="quick-account-avatar" />
                   <div class="quick-account-info">
-                    <span class="quick-account-name">ゆのい 朝倉</span>
-                    <span class="quick-account-email">As.Yunoi@outlook.jp</span>
+                    <span class="quick-account-name">{{ savedProfileUser.nickname || '历史账号' }}</span>
+                    <span class="quick-account-email">{{ savedProfileUser.identifier || '' }}</span>
                   </div>
-                  <span class="quick-account-badge">本机凭据</span>
+                  <span class="quick-account-badge">快捷填入</span>
                 </div>
 
-                <div class="login-divider">
+                <div v-if="savedProfileUser" class="login-divider">
                   <span>或使用其他账号</span>
                 </div>
 
@@ -353,7 +381,6 @@ import {
   CircleUserRound,
   Camera,
 } from 'lucide-vue-next';
-import avatarImg from '../assets/avatar.png';
 import { userAvatarUrl, apiUploadUserAvatar } from '../utils/avatar';
 import {
   apiGetProblems,
@@ -387,17 +414,17 @@ const emit = defineEmits<{
   (e: 'notify', msg: string): void;
 }>();
 
-// Login State
-const isLoggedIn = ref(true);
+// Login State - 新用户默认未登录，本地模式
+const isLoggedIn = ref(false);
 const isLoggingIn = ref(false);
 const showLoginModal = ref(false);
 const customLoginName = ref('');
 const customLoginEmail = ref('');
 const customLoginPassword = ref('');
 
-// User Profile States
-const profileName = ref('ゆのい 朝倉');
-const profileEmail = ref('As.Yunoi@outlook.jp');
+// User Profile States - 头像用户名均可自定义，不硬编码预设特定人物
+const profileName = ref('本地用户');
+const profileEmail = ref('');
 const tempName = ref('');
 const tempEmail = ref('');
 const isEditing = ref(false);
@@ -405,6 +432,17 @@ const showExtraDetails = ref(false);
 const nameInputRef = ref<HTMLInputElement | null>(null);
 const avatarInputRef = ref<HTMLInputElement | null>(null);
 const isUploadingAvatar = ref(false);
+
+const savedProfileUser = computed(() => {
+  if (typeof window === 'undefined') return null;
+  const raw = localStorage.getItem('naosu_user_profile');
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+});
 
 // Local Data Statistics
 const stats = ref({
@@ -419,7 +457,7 @@ const actualDataSizeBytes = ref(0);
 
 // Sync States
 const isSyncing = ref(false);
-const lastSyncTimeText = ref('今天 10:48');
+const lastSyncTimeText = ref('未同步');
 
 // Storage Calculations (200MB max)
 const TOTAL_STORAGE_CAPACITY_BYTES = 200 * 1024 * 1024; // 200 MB
@@ -446,11 +484,11 @@ const storagePercentText = computed(() => {
 });
 
 onMounted(() => {
-  // Load saved login state
+  // Load saved login state - 默认未登录 (本地模式)，仅当值为 'true' 时判定已登录
   const savedLogin = localStorage.getItem('naosu_is_logged_in');
-  isLoggedIn.value = savedLogin !== 'false';
+  isLoggedIn.value = savedLogin === 'true';
 
-  // Load saved user info
+  // Load saved user info (若有自定义保存则读取，否则保持中性默认)
   const savedName = localStorage.getItem('naosu_user_name');
   if (savedName) profileName.value = savedName;
 
@@ -604,10 +642,14 @@ async function handleAvatarFileChange(e: Event) {
   }
 }
 
-function performFakeLogin(name: string, email: string) {
-  customLoginEmail.value = email;
-  customLoginName.value = name;
-  emit('notify', `已选择账号凭据：${name} (${email})，请输入密码完成登录`);
+function fillSavedAccount(user: any) {
+  if (user?.identifier) {
+    customLoginEmail.value = user.identifier;
+  }
+  if (user?.nickname) {
+    customLoginName.value = user.nickname;
+  }
+  emit('notify', `已选择上次登录账号：${user?.nickname || user?.identifier}，请输入密码`);
 }
 
 async function loadStats() {
@@ -955,6 +997,33 @@ function handleTermsClick() {
 .name-row {
   display: flex;
   align-items: center;
+  gap: 4px;
+}
+
+.btn-edit-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: #747775;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.2s ease;
+}
+
+.btn-edit-inline:hover {
+  background-color: #f1f3f4;
+  color: #1a73e8;
+}
+
+.local-mode-pill {
+  background-color: #e8f0fe !important;
+  color: #1a73e8 !important;
+  font-weight: 600;
 }
 
 .user-name {

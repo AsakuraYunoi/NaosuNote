@@ -1,6 +1,19 @@
 import { ref } from 'vue';
-import defaultAvatar from '../assets/avatar.png';
 import { getServerBaseUrl, getAuthToken } from './api';
+// 默认中性极简用户头像矢量图：优雅 Material 风格轮廓，不预设任何特定人物或形象
+export const DEFAULT_AVATAR_SVG = `data:image/svg+xml;utf8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="100%" height="100%">
+  <defs>
+    <linearGradient id="avatarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3B82F6" />
+      <stop offset="100%" stop-color="#1D4ED8" />
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="64" fill="url(#avatarGrad)"/>
+  <circle cx="64" cy="46" r="22" fill="#FFFFFF" fill-opacity="0.95"/>
+  <path d="M25 106 C25 83, 42 75, 64 75 C86 75, 103 83, 103 106 Z" fill="#FFFFFF" fill-opacity="0.95"/>
+</svg>
+`.trim())}`;
 
 const AVATAR_KEY = 'naosu_user_avatar';
 const REMOTE_AVATAR_KEY = 'naosu_user_avatar_remote';
@@ -18,7 +31,7 @@ function loadInitialAvatar(): string {
       return remote.startsWith('http') ? remote : `${baseUrl}${remote}`;
     }
   }
-  return defaultAvatar;
+  return DEFAULT_AVATAR_SVG;
 }
 
 export function setUserAvatar(url: string) {
