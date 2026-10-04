@@ -709,6 +709,35 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--md-sys-color-outline-variant, #cac4d0);
 }
 
+[data-theme="dark"] .problem-document-content :deep(.img svg),
+[data-theme="dark"] .problem-document-content :deep(.canvas-media-shell svg),
+[data-theme="dark"] .problem-document-content :deep(.exam-images-row svg) {
+  filter: invert(0.88) hue-rotate(180deg);
+}
+
+[data-theme="dark"] .problem-document-content :deep(.katex svg) {
+  filter: none !important;
+}
+
+[data-theme="dark"] .problem-document-content :deep(table) {
+  border-top-color: #e2e2e6 !important;
+  border-bottom-color: #e2e2e6 !important;
+}
+
+[data-theme="dark"] .problem-document-content :deep(thead tr) {
+  border-bottom-color: #e2e2e6 !important;
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-theme="dark"] .problem-document-content :deep(th) {
+  color: #e2e2e6 !important;
+}
+
+[data-theme="dark"] .problem-document-content :deep(td) {
+  border-bottom-color: rgba(255, 255, 255, 0.15) !important;
+  color: #c3c7cf !important;
+}
+
 .problem-document-content :deep(.img) {
   margin: 24px auto !important;
   display: flex !important;

@@ -259,8 +259,10 @@ function triggerFileInput() {
 
 function onFileInputChange(e: Event) {
   const target = e.target as HTMLInputElement;
-  if (target.files && target.files[0]) {
-    emit('upload', target.files[0]);
+  if (target.files && target.files.length > 0) {
+    for (let i = 0; i < target.files.length; i++) {
+      emit('upload', target.files[i]);
+    }
     target.value = '';
   }
 }

@@ -31,6 +31,7 @@ targets:
       - path: Sources
       - path: Assets.xcassets
       - path: Externals
+        excludes: ["**/*.a"]
       - path: naosunote_iOS
       - path: assets
         buildPhase: resources
@@ -51,8 +52,8 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        CFBundleShortVersionString: 0.2.0
-        CFBundleVersion: "0.2.0"
+        CFBundleShortVersionString: 0.2.2
+        CFBundleVersion: "0.2.2"
     entitlements:
       path: naosunote_iOS/naosunote_iOS.entitlements
     scheme:
@@ -81,10 +82,8 @@ targets:
       - sdk: WebKit.framework
     preBuildScripts:
       - script: |
-          if [ -f "/var/folders/zw/qw501ygx2hngv94wlk9j711c0000gn/T/com.naosunote.app-server-addr" ]; then
-            pnpm tauri ios xcode-script -v --platform ${PLATFORM_DISPLAY_NAME:?} --sdk-root ${SDKROOT:?} --framework-search-paths "${FRAMEWORK_SEARCH_PATHS:?}" --header-search-paths "${HEADER_SEARCH_PATHS:?}" --gcc-preprocessor-definitions "${GCC_PREPROCESSOR_DEFINITIONS:-}" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}
-          else
-            mkdir -p "${SRCROOT}/Externals/arm64/${CONFIGURATION}"
+          mkdir -p "${SRCROOT}/Externals/arm64/${CONFIGURATION}"
+          if [ ! -f "${SRCROOT}/Externals/arm64/${CONFIGURATION}/libapp.a" ]; then
             cp -f "${SRCROOT}/../../target/aarch64-apple-ios/release/libapp_lib.a" "${SRCROOT}/Externals/arm64/${CONFIGURATION}/libapp.a" 2>/dev/null || true
           fi
         name: Build Rust Code

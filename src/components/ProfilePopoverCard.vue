@@ -801,6 +801,7 @@ function handleTermsClick() {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   z-index: 1001;
   box-sizing: border-box;
+  transform-origin: bottom left;
 }
 
 /* 移动端专属悬浮定位：紧贴右上角头像下方展开 */
@@ -1771,36 +1772,60 @@ function handleTermsClick() {
   transform: translate(1px, -1px);
 }
 
-/* Animations */
+/* Animations: 遮罩仅做渐隐渐显，绝不缩放变形 */
 .google-popover-enter-active,
 .google-popover-mobile-enter-active {
-  transition: all 0.22s cubic-bezier(0.1, 0.9, 0.2, 1);
+  transition: opacity 0.24s cubic-bezier(0.1, 0.9, 0.2, 1);
 }
 
 .google-popover-leave-active,
 .google-popover-mobile-leave-active {
-  transition: all 0.16s cubic-bezier(0.4, 0, 1, 1);
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 1, 1);
 }
 
-.google-popover-enter-from {
-  opacity: 0;
-  transform: scale(0.93) translateY(12px);
-}
-
-.google-popover-leave-to {
-  opacity: 0;
-  transform: scale(0.95);
-}
-
-/* Mobile: 从右上角向下轻微展开 */
-.google-popover-mobile-enter-from {
-  opacity: 0;
-  transform: scale(0.9) translateY(-10px);
-}
-
+.google-popover-enter-from,
+.google-popover-leave-to,
+.google-popover-mobile-enter-from,
 .google-popover-mobile-leave-to {
   opacity: 0;
-  transform: scale(0.95) translateY(-4px);
+}
+
+/* Desktop: 内部卡片从左下角头像处优雅缩放弹入和向左下角头像回缩隐退 */
+.google-popover-enter-active .google-profile-card {
+  transition: transform 0.26s cubic-bezier(0.1, 0.9, 0.2, 1), opacity 0.24s cubic-bezier(0.1, 0.9, 0.2, 1);
+}
+
+.google-popover-leave-active .google-profile-card {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 1, 1), opacity 0.18s cubic-bezier(0.4, 0, 1, 1);
+}
+
+.google-popover-enter-from .google-profile-card {
+  opacity: 0;
+  transform: scale(0.88) translate(-14px, 14px);
+}
+
+.google-popover-leave-to .google-profile-card {
+  opacity: 0;
+  transform: scale(0.88) translate(-14px, 14px);
+}
+
+/* Mobile: 从右上角头像处优雅展开与回缩 */
+.google-popover-mobile-enter-active .google-profile-card {
+  transition: transform 0.24s cubic-bezier(0.1, 0.9, 0.2, 1), opacity 0.22s ease;
+}
+
+.google-popover-mobile-leave-active .google-profile-card {
+  transition: transform 0.18s cubic-bezier(0.4, 0, 1, 1), opacity 0.16s ease;
+}
+
+.google-popover-mobile-enter-from .google-profile-card {
+  opacity: 0;
+  transform: scale(0.92) translateY(-10px);
+}
+
+.google-popover-mobile-leave-to .google-profile-card {
+  opacity: 0;
+  transform: scale(0.92) translateY(-10px);
 }
 
 .fade-collapse-enter-active,

@@ -17,6 +17,10 @@ pub async fn check_missing_images(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CheckMissingImagesRequest>,
 ) -> Json<ApiResponse<CheckMissingImagesResponse>> {
+    let storage_root = StdPath::new(&state.config.storage.local_root);
+    // 先执行服务端无引用孤儿图片清理
+    let _ = state.db.data.prune_unreferenced_images(&auth_user.uuid, storage_root);
+
     let server_images = match state.db.data.get_user_image_names(&auth_user.uuid) {
         Ok(imgs) => imgs,
         Err(e) => {
@@ -28,14 +32,13 @@ pub async fn check_missing_images(
         }
     };
 
-    let user_img_dir = StdPath::new(&state.config.storage.local_root)
-        .join(&auth_user.uuid)
-        .join("images");
+    let user_dir = storage_root.join(&auth_user.uuid);
+    let user_img_dir = user_dir.join("images");
 
-    // 过滤服务端磁盘实际存在的文件
+    // 过滤服务端磁盘实际存在的文件 (兼容 images/ 子目录与用户根目录)
     let server_set: std::collections::HashSet<String> = server_images
         .into_iter()
-        .filter(|img| user_img_dir.join(img).exists())
+        .filter(|img| user_img_dir.join(img).exists() || user_dir.join(img).exists())
         .collect();
 
     let (need_upload, need_download) = if req.local_disk_filenames.is_some() || req.required_filenames.is_some() {
@@ -44,15 +47,15 @@ pub async fn check_missing_images(
         let local_set: std::collections::HashSet<String> = local_disk.into_iter().collect();
         let required_set: std::collections::HashSet<String> = required.into_iter().collect();
 
-        // 客户端存在但服务端缺失：需上传
+        // 客户端有效错题所需且本地存在，但服务端缺失：需上传
         let mut upload = Vec::new();
-        for l_img in &local_set {
-            if !server_set.contains(l_img) {
-                upload.push(l_img.clone());
+        for r_img in &required_set {
+            if local_set.contains(r_img) && !server_set.contains(r_img) {
+                upload.push(r_img.clone());
             }
         }
 
-        // 服务端存在但客户端缺失：需下载
+        // 服务端存在，客户端错题声明需要，但客户端本地磁盘缺失：需下载
         let mut download = Vec::new();
         for r_img in &required_set {
             if server_set.contains(r_img) && !local_set.contains(r_img) {
@@ -180,13 +183,16 @@ pub async fn download_image(
         None => return (StatusCode::BAD_REQUEST, "Invalid filename").into_response(),
     };
 
-    let target_path = StdPath::new(&state.config.storage.local_root)
-        .join(&auth_user.uuid)
-        .join("images")
-        .join(clean_filename);
+    let user_dir = StdPath::new(&state.config.storage.local_root).join(&auth_user.uuid);
+    let mut target_path = user_dir.join("images").join(clean_filename);
 
     if !target_path.exists() {
-        return (StatusCode::NOT_FOUND, "Image not found").into_response();
+        let alt_path = user_dir.join(clean_filename);
+        if alt_path.exists() {
+            target_path = alt_path;
+        } else {
+            return (StatusCode::NOT_FOUND, "Image not found").into_response();
+        }
     }
 
     match fs::read(&target_path) {

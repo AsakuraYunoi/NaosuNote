@@ -93,7 +93,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import type { Problem } from '../../types/problem';
-import { apiUpdateProblemContent, apiUpdateProblemAnswer } from '../../utils/api';
+import { apiUpdateProblemContent, apiUpdateProblemAnswer, triggerSilentCloudSync } from '../../utils/api';
 import ProblemEditorCard from './ProblemEditorCard.vue';
 import ProblemAnswerCard from './ProblemAnswerCard.vue';
 import { ArrowLeft, Save } from 'lucide-vue-next';
@@ -130,9 +130,20 @@ const subjectBadgeClass = computed(() => {
   return 'default';
 });
 
-function onAnswerChanged(payload: { answerMarkdown: string; answerImages: string[] }) {
+async function onAnswerChanged(payload: { answerMarkdown: string; answerImages: string[] }) {
   currentAnswerMarkdown.value = payload.answerMarkdown;
   currentAnswerImages.value = [...payload.answerImages];
+
+  try {
+    await apiUpdateProblemAnswer(
+      props.problem.uuid,
+      currentAnswerMarkdown.value,
+      currentAnswerImages.value
+    );
+    triggerSilentCloudSync();
+  } catch (err) {
+    console.warn('Failed to auto-update problem answer:', err);
+  }
 }
 
 async function handleSave() {
@@ -196,6 +207,7 @@ async function handleSave() {
 
     emit('notify', '已成功保存修改');
     emit('saved', updated);
+    triggerSilentCloudSync();
   } catch (err: any) {
     console.error('Failed to save problem:', err);
     emit('notify', `保存失败: ${err?.message || err}`);

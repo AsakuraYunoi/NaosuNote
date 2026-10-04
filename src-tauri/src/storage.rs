@@ -1,11 +1,48 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[cfg(target_os = "android")]
+pub fn get_android_app_storage_dir() -> PathBuf {
+    // 候选路径列表，按可靠性排序：
+    // 1. 外部应用私有目录（零权限要求，Android 4.4~15 均原生支持，卸载时清除，用户可在部分文件管理器或通过电脑访问）
+    // 2. 内部沙盒数据目录（100% 具备读写权限）
+    let candidates = [
+        "/storage/emulated/0/Android/data/com.naosunote.app/files/NaosuNoteData",
+        "/storage/emulated/0/Android/data/com.naosunote.app.debug/files/NaosuNoteData",
+        "/data/user/0/com.naosunote.app/files/NaosuNoteData",
+        "/data/data/com.naosunote.app/files/NaosuNoteData",
+        "/data/user/0/com.naosunote.app.debug/files/NaosuNoteData",
+        "/data/data/com.naosunote.app.debug/files/NaosuNoteData",
+    ];
+
+    for path_str in candidates {
+        let p = PathBuf::from(path_str);
+        if fs::create_dir_all(&p).is_ok() {
+            let test_file = p.join(".write_test");
+            if fs::write(&test_file, b"ok").is_ok() {
+                let _ = fs::remove_file(test_file);
+                return p;
+            }
+        }
+    }
+
+    PathBuf::from("/storage/emulated/0/Android/data/com.naosunote.app/files/NaosuNoteData")
+}
+
 pub fn get_config_path() -> PathBuf {
-    let base = dirs::config_dir()
-        .or_else(dirs::data_dir)
-        .unwrap_or_else(|| PathBuf::from("."));
-    base.join("NaosuNote").join("config.json")
+    #[cfg(target_os = "android")]
+    {
+        let base = get_android_app_storage_dir();
+        return base.join("config.json");
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        let base = dirs::config_dir()
+            .or_else(dirs::data_dir)
+            .unwrap_or_else(|| PathBuf::from("."));
+        base.join("NaosuNote").join("config.json")
+    }
 }
 
 pub fn load_saved_data_directory() -> Option<PathBuf> {
@@ -45,7 +82,7 @@ pub fn resolve_data_directory() -> PathBuf {
 
     #[cfg(target_os = "android")]
     {
-        return PathBuf::from("/storage/emulated/0/Documents/NaosuNoteData");
+        return get_android_app_storage_dir();
     }
 
     #[cfg(target_os = "ios")]
@@ -76,7 +113,9 @@ pub fn resolve_data_directory() -> PathBuf {
 /// 确保数据目录完备，并执行初始题库无缝平滑迁移
 /// 若目标目录中尚无 naosu.db，且当前分发包/工程中存有已有题目的 data/naosu.db，自动执行一次安全复制
 pub fn ensure_storage_ready(data_dir: &Path) {
-    let _ = fs::create_dir_all(data_dir);
+    if let Err(e) = fs::create_dir_all(data_dir) {
+        eprintln!("[NaosuNote] ensure_storage_ready create_dir_all failed for {:?}: {}", data_dir, e);
+    }
 
     let dest_db = data_dir.join("naosu.db");
     if !dest_db.exists() {

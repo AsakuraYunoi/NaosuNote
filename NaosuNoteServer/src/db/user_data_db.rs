@@ -39,12 +39,16 @@ impl UserDataDb {
                 tags TEXT DEFAULT '[]',
                 answer_markdown TEXT DEFAULT '',
                 answer_images TEXT DEFAULT '[]',
+                date TEXT,
+                created_at TEXT,
                 is_deleted INTEGER DEFAULT 0,
                 updated_at INTEGER NOT NULL,
                 PRIMARY KEY (uuid, user_uuid)
             );",
             [],
         )?;
+        let _ = conn.execute("ALTER TABLE sync_problems ADD COLUMN date TEXT;", []);
+        let _ = conn.execute("ALTER TABLE sync_problems ADD COLUMN created_at TEXT;", []);
 
         // 2. 同步错题本表
         conn.execute(
@@ -123,7 +127,8 @@ impl UserDataDb {
         // 2. Pull Problems
         let mut p_stmt = conn.prepare(
             "SELECT uuid, notebook_id, subject, type, summary, raw_html, stem_clean_text, 
-                    difficulty, importance, tags, answer_markdown, answer_images, is_deleted, updated_at 
+                    difficulty, importance, tags, answer_markdown, answer_images, is_deleted, updated_at,
+                    date, created_at 
              FROM sync_problems 
              WHERE user_uuid = ?1 AND updated_at > ?2",
         )?;
@@ -147,6 +152,8 @@ impl UserDataDb {
                 tags,
                 answer_markdown: row.get(10)?,
                 answer_images: imgs,
+                date: row.get(14)?,
+                created_at: row.get(15)?,
                 is_deleted: row.get(12)?,
                 updated_at: row.get(13)?,
             })
@@ -184,8 +191,11 @@ impl UserDataDb {
         let mut applied_problems = 0;
         let mut applied_tags = 0;
 
+        let now_ms = chrono::Utc::now().timestamp_millis();
+
         // Upsert Notebooks with LWW
         for nb in notebooks {
+            let nb_ts = std::cmp::max(nb.updated_at, now_ms);
             let affected = tx.execute(
                 "INSERT INTO sync_notebooks (id, user_uuid, name, subject, is_deleted, updated_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)
@@ -195,7 +205,7 @@ impl UserDataDb {
                     is_deleted = excluded.is_deleted,
                     updated_at = excluded.updated_at
                  WHERE excluded.updated_at >= sync_notebooks.updated_at;",
-                params![nb.id, user_uuid, nb.name, nb.subject, nb.is_deleted, nb.updated_at],
+                params![nb.id, user_uuid, nb.name, nb.subject, nb.is_deleted, nb_ts],
             )?;
             applied_notebooks += affected;
         }
@@ -204,12 +214,13 @@ impl UserDataDb {
         for prob in problems {
             let tags_str = serde_json::to_string(&prob.tags.unwrap_or_default()).unwrap_or_else(|_| "[]".to_string());
             let imgs_str = serde_json::to_string(&prob.answer_images.unwrap_or_default()).unwrap_or_else(|_| "[]".to_string());
+            let prob_ts = std::cmp::max(prob.updated_at, now_ms);
 
             let affected = tx.execute(
                 "INSERT INTO sync_problems (
                     uuid, user_uuid, notebook_id, subject, type, summary, raw_html, stem_clean_text,
-                    difficulty, importance, tags, answer_markdown, answer_images, is_deleted, updated_at
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+                    difficulty, importance, tags, answer_markdown, answer_images, date, created_at, is_deleted, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
                  ON CONFLICT(uuid, user_uuid) DO UPDATE SET
                     notebook_id = excluded.notebook_id,
                     subject = excluded.subject,
@@ -222,6 +233,8 @@ impl UserDataDb {
                     tags = excluded.tags,
                     answer_markdown = excluded.answer_markdown,
                     answer_images = excluded.answer_images,
+                    date = COALESCE(excluded.date, sync_problems.date),
+                    created_at = COALESCE(sync_problems.created_at, excluded.created_at),
                     is_deleted = excluded.is_deleted,
                     updated_at = excluded.updated_at
                  WHERE excluded.updated_at >= sync_problems.updated_at;",
@@ -239,8 +252,10 @@ impl UserDataDb {
                     tags_str,
                     prob.answer_markdown.unwrap_or_default(),
                     imgs_str,
+                    prob.date,
+                    prob.created_at,
                     prob.is_deleted,
-                    prob.updated_at
+                    prob_ts
                 ],
             )?;
             applied_problems += affected;
@@ -248,6 +263,7 @@ impl UserDataDb {
 
         // Upsert Tags
         for tag in tags {
+            let tag_ts = std::cmp::max(tag.updated_at, now_ms);
             let affected = tx.execute(
                 "INSERT INTO sync_tags (name, user_uuid, is_deleted, updated_at)
                  VALUES (?1, ?2, ?3, ?4)
@@ -255,7 +271,7 @@ impl UserDataDb {
                     is_deleted = excluded.is_deleted,
                     updated_at = excluded.updated_at
                  WHERE excluded.updated_at >= sync_tags.updated_at;",
-                params![tag.name, user_uuid, tag.is_deleted, tag.updated_at],
+                params![tag.name, user_uuid, tag.is_deleted, tag_ts],
             )?;
             applied_tags += affected;
         }
@@ -320,4 +336,93 @@ impl UserDataDb {
         let rows = stmt.query_map(params![user_uuid], |r| r.get(0))?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
+
+    pub fn prune_unreferenced_images(
+        &self,
+        user_uuid: &str,
+        storage_root: &std::path::Path,
+    ) -> Result<Vec<String>> {
+        let conn = self.conn.lock().unwrap();
+
+        // 1. 获取所有未删除错题中引用的有效图片集合
+        let mut stmt = conn.prepare(
+            "SELECT answer_images FROM sync_problems WHERE user_uuid = ?1 AND is_deleted = 0",
+        )?;
+        let mut active_images = std::collections::HashSet::new();
+        let rows = stmt.query_map(params![user_uuid], |row| {
+            let s: String = row.get(0).unwrap_or_else(|_| "[]".to_string());
+            Ok(s)
+        })?;
+        for r in rows.flatten() {
+            if let Ok(list) = serde_json::from_str::<Vec<String>>(&r) {
+                for img in list {
+                    let trimmed = img.trim();
+                    if !trimmed.is_empty() {
+                        active_images.insert(trimmed.to_string());
+                    }
+                }
+            }
+        }
+
+        // 2. 查询 sync_images 表中该用户的所有登记图片
+        let mut stmt_imgs = conn.prepare(
+            "SELECT filename FROM sync_images WHERE user_uuid = ?1",
+        )?;
+        let all_recorded: Vec<String> = stmt_imgs
+            .query_map(params![user_uuid], |row| row.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        let user_dir = storage_root.join(user_uuid);
+        let user_img_dir = user_dir.join("images");
+        let mut deleted_filenames = Vec::new();
+
+        // 3. 删除 sync_images 中不再被引用的记录及物理文件
+        for fname in all_recorded {
+            if !active_images.contains(&fname) {
+                let p1 = user_img_dir.join(&fname);
+                if p1.exists() {
+                    let _ = std::fs::remove_file(p1);
+                }
+                let p2 = user_dir.join(&fname);
+                if p2.exists() && fname != "avatar.webp" {
+                    let _ = std::fs::remove_file(p2);
+                }
+                let _ = conn.execute(
+                    "DELETE FROM sync_images WHERE filename = ?1 AND user_uuid = ?2",
+                    params![fname, user_uuid],
+                );
+                deleted_filenames.push(fname);
+            }
+        }
+
+        // 4. 磁盘扫描：清理磁盘中存在但不在 active_images 的孤儿物理文件
+        for dir in [&user_img_dir, &user_dir] {
+            if dir.exists() {
+                if let Ok(entries) = std::fs::read_dir(dir) {
+                    for entry in entries.flatten() {
+                        if let Ok(ft) = entry.file_type() {
+                            if ft.is_file() {
+                                if let Some(name) = entry.file_name().to_str() {
+                                    if name != "avatar.webp" && !name.starts_with('.') && !active_images.contains(name) {
+                                        let _ = std::fs::remove_file(entry.path());
+                                        let _ = conn.execute(
+                                            "DELETE FROM sync_images WHERE filename = ?1 AND user_uuid = ?2",
+                                            params![name, user_uuid],
+                                        );
+                                        if !deleted_filenames.contains(&name.to_string()) {
+                                            deleted_filenames.push(name.to_string());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(deleted_filenames)
+    }
 }
+

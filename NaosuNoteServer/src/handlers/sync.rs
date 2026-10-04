@@ -44,6 +44,10 @@ pub async fn sync_push(
 
     match state.db.data.push_data(&auth_user.uuid, notebooks, problems, tags) {
         Ok((applied_notebooks, applied_problems, applied_tags)) => {
+            // 自动清理该用户无引用的孤儿图片及磁盘物理文件
+            let storage_root = std::path::Path::new(&state.config.storage.local_root);
+            let _ = state.db.data.prune_unreferenced_images(&auth_user.uuid, storage_root);
+
             let total_applied = applied_notebooks + applied_problems + applied_tags;
             Json(ApiResponse::ok_msg(
                 "增量更新已成功合并",

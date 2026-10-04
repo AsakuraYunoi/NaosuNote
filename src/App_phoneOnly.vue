@@ -97,7 +97,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
 import type { Problem } from './types/problem';
 import NavigationBar_phoneOnly from './components/NavigationBar_phoneOnly.vue';
 import LibraryView_phoneOnly from './views/LibraryView_phoneOnly.vue';
@@ -109,6 +109,7 @@ import ProfileView_phoneOnly from './views/ProfileView_phoneOnly.vue';
 import StorageDirModal_phoneOnly from './components/StorageDirModal_phoneOnly.vue';
 import Toast from './components/Toast.vue';
 import { apiSyncAllMirrors, apiSyncCloud } from './utils/api';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 const currentTab = ref('library');
 const previousTab = ref('library');
@@ -130,6 +131,9 @@ watch(currentTab, (newTab, oldTab) => {
     transitionName.value = 'mobile-pop';
   } else {
     transitionName.value = 'mobile-crossfade';
+    if (newTab !== 'problem-detail' && newTab !== 'profile') {
+      window.history.replaceState({ naosu: true, tab: newTab }, '');
+    }
   }
 });
 
@@ -139,8 +143,70 @@ const lastActiveNotebookId = ref<string | null>(null);
 
 const toastVisible = ref(false);
 const toastMsg = ref('');
+let lastBackPressTime = 0;
+
+async function handlePopState(_e: PopStateEvent) {
+  // 1. 先触发自定义返回事件，允许子页面内部（抽屉、选择器、Dialog）拦截
+  const customBackEvt = new CustomEvent('naosu:back', { cancelable: true });
+  window.dispatchEvent(customBackEvt);
+  if (customBackEvt.defaultPrevented) {
+    // 子组件消费了该返回手势，补充 pushState 恢复历史防御层
+    window.history.pushState({ naosu: true, tab: currentTab.value }, '');
+    return;
+  }
+
+  // 2. 检查顶层全局弹窗
+  if (showInitialStorageModal.value) {
+    showInitialStorageModal.value = false;
+    window.history.pushState({ naosu: true, tab: currentTab.value }, '');
+    return;
+  }
+
+  // 3. 检查题目详情页面
+  if (currentTab.value === 'problem-detail') {
+    doBackToLibrary();
+    return;
+  }
+
+  // 4. 检查个人中心全屏页面
+  if (currentTab.value === 'profile') {
+    doBackFromProfile();
+    return;
+  }
+
+  // 5. 检查非主页底栏 Tab (如 ingest, print, settings)
+  if (currentTab.value !== 'library') {
+    currentTab.value = 'library';
+    window.history.pushState({ naosu: true, tab: 'library' }, '');
+    return;
+  }
+
+  // 6. 处于 library 根页面：双滑退出防误触逻辑
+  const now = Date.now();
+  if (now - lastBackPressTime < 2000) {
+    // 2 秒内再次触发返回：执行退出应用
+    try {
+      await getCurrentWindow().close();
+    } catch {
+      window.history.back();
+    }
+  } else {
+    lastBackPressTime = now;
+    showToast('再划一次退出应用');
+    // 重新压栈，确保下一次滑动能再次触发 popstate 捕获
+    window.history.pushState({ naosu: true, tab: 'root' }, '');
+  }
+}
 
 onMounted(async () => {
+  // 初始化 WebView 历史栈，建立防御基准防止边缘滑动导致系统直接杀死 App
+  if (!window.history.state || !window.history.state.naosu) {
+    window.history.replaceState({ naosu: true, tab: 'root' }, '');
+    window.history.pushState({ naosu: true, tab: currentTab.value }, '');
+  }
+
+  window.addEventListener('popstate', handlePopState);
+
   // 检查移动端是否已选择持久化目录
   const hasSelectedDir = localStorage.getItem('naosu_storage_dir_selected');
   if (hasSelectedDir !== 'true') {
@@ -176,6 +242,10 @@ onMounted(async () => {
   }
 });
 
+onUnmounted(() => {
+  window.removeEventListener('popstate', handlePopState);
+});
+
 function showToast(msg: string) {
   toastMsg.value = msg;
   toastVisible.value = true;
@@ -196,15 +266,24 @@ function openProblemDetail(prob: Problem, context?: { subject?: string; notebook
 
   editingProblem.value = prob;
   currentTab.value = 'problem-detail';
+  window.history.pushState({ naosu: true, tab: 'problem-detail' }, '');
 }
 
-function onBackToLibrary() {
+function doBackToLibrary() {
   if (editingProblem.value) {
     lastActiveProblem.value = editingProblem.value;
     lastActiveSubject.value = editingProblem.value.subject;
     lastActiveNotebookId.value = editingProblem.value.notebook_id ?? null;
   }
   currentTab.value = 'library';
+}
+
+function onBackToLibrary() {
+  if (window.history.state?.tab === 'problem-detail') {
+    window.history.back();
+  } else {
+    doBackToLibrary();
+  }
 }
 
 function onProblemSaved(updated: Problem) {
@@ -260,10 +339,19 @@ function moveCartItemDown(index: number) {
 function openProfilePage() {
   previousTab.value = currentTab.value;
   currentTab.value = 'profile';
+  window.history.pushState({ naosu: true, tab: 'profile' }, '');
+}
+
+function doBackFromProfile() {
+  currentTab.value = previousTab.value || 'library';
 }
 
 function onBackFromProfile() {
-  currentTab.value = previousTab.value || 'library';
+  if (window.history.state?.tab === 'profile') {
+    window.history.back();
+  } else {
+    doBackFromProfile();
+  }
 }
 </script>
 

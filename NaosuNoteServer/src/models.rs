@@ -115,6 +115,10 @@ pub struct SyncProblem {
     pub answer_markdown: Option<String>,
     pub answer_images: Option<Vec<String>>,
     #[serde(default)]
+    pub date: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
     pub is_deleted: i32,
     #[serde(default)]
     pub updated_at: i64,

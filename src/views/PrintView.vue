@@ -268,6 +268,10 @@
           :key="prob.uuid"
           :data-uuid="prob.uuid"
           class="paper-problem-wrapper measure-item"
+          :style="{
+            '--print-img-scale': `${getImageScale(prob.uuid)}`,
+            '--print-img-align': getImageAlign(prob.uuid),
+          }"
         >
           <div
             class="problem-render-body selectable"
@@ -337,11 +341,74 @@
                   <!-- Questions List for this page -->
                   <div class="paper-problems-flow">
                     <div
-                      v-for="item in page.items"
+                      v-for="(item, itemIdx) in page.items"
                       :key="item.problem.uuid"
                       class="paper-problem-wrapper"
-                      :style="{ marginBottom: `${getProblemSpacing(item.problem.uuid)}px` }"
+                      :style="{
+                        marginBottom: '0px',
+                        '--print-img-scale': `${getImageScale(item.problem.uuid)}`,
+                        '--print-img-align': getImageAlign(item.problem.uuid),
+                      }"
                     >
+                      <!-- 打印配图缩放与对齐微型浮动工具条 (仅打印预览可见，不改动原题) -->
+                      <div v-if="hasMedia(item.problem.raw_html)" class="print-media-toolbar no-print">
+                        <div class="print-media-group">
+                          <span class="media-toolbar-title">图表:</span>
+                          <button
+                            type="button"
+                            class="media-chip-btn"
+                            :class="{ active: getImageScale(item.problem.uuid) === 0.6 }"
+                            title="缩放为 60%"
+                            @click="setImageScale(item.problem.uuid, 0.6)"
+                          >60%</button>
+                          <button
+                            type="button"
+                            class="media-chip-btn"
+                            :class="{ active: getImageScale(item.problem.uuid) === 0.8 }"
+                            title="缩放为 80%"
+                            @click="setImageScale(item.problem.uuid, 0.8)"
+                          >80%</button>
+                          <button
+                            type="button"
+                            class="media-chip-btn"
+                            :class="{ active: getImageScale(item.problem.uuid) === 1.0 }"
+                            title="恢复 100%"
+                            @click="setImageScale(item.problem.uuid, 1.0)"
+                          >100%</button>
+                          <button
+                            type="button"
+                            class="media-chip-btn"
+                            :class="{ active: getImageScale(item.problem.uuid) === 1.2 }"
+                            title="放大为 120%"
+                            @click="setImageScale(item.problem.uuid, 1.2)"
+                          >120%</button>
+                        </div>
+                        <div class="media-toolbar-sep"></div>
+                        <div class="print-media-group">
+                          <button
+                            type="button"
+                            class="media-chip-btn"
+                            :class="{ active: getImageAlign(item.problem.uuid) === 'flex-start' }"
+                            title="靠左对齐"
+                            @click="setImageAlign(item.problem.uuid, 'flex-start')"
+                          >左</button>
+                          <button
+                            type="button"
+                            class="media-chip-btn"
+                            :class="{ active: getImageAlign(item.problem.uuid) === 'center' }"
+                            title="居中对齐"
+                            @click="setImageAlign(item.problem.uuid, 'center')"
+                          >中</button>
+                          <button
+                            type="button"
+                            class="media-chip-btn"
+                            :class="{ active: getImageAlign(item.problem.uuid) === 'flex-end' }"
+                            title="靠右对齐"
+                            @click="setImageAlign(item.problem.uuid, 'flex-end')"
+                          >右</button>
+                        </div>
+                      </div>
+
                       <!-- Problem Body with index number matching stem font size, KaTeX, SVG & Table -->
                       <div
                         class="problem-render-body selectable"
@@ -350,6 +417,7 @@
 
                       <!-- Interactive Answer Space Resizer Handle -->
                       <AnswerSpaceHandle
+                        v-if="itemIdx < page.items.length - 1 || page.remainingHeight > 0"
                         :space="getProblemSpacing(item.problem.uuid)"
                         :remaining-page-height="getItemRemainingSpace(page, item.problem.uuid)"
                         @update:space="setProblemSpacing(item.problem.uuid, $event)"
@@ -470,6 +538,46 @@ function resetAllCustomSpacings() {
   updateMeasuredHeights();
 }
 
+// 打印专属图表缩放与排版覆盖层（完全不污染数据库原题）
+export interface PrintMediaOverride {
+  scale?: number;
+  align?: 'flex-start' | 'center' | 'flex-end';
+}
+
+const printMediaOverrides = ref<Record<string, PrintMediaOverride>>({});
+
+function hasMedia(rawHtml: string): boolean {
+  return /<(svg|img)\b/i.test(rawHtml);
+}
+
+function getImageScale(uuid: string): number {
+  return printMediaOverrides.value[uuid]?.scale ?? 1.0;
+}
+
+function getImageAlign(uuid: string): string {
+  return printMediaOverrides.value[uuid]?.align ?? 'center';
+}
+
+function setImageScale(uuid: string, scale: number) {
+  if (!printMediaOverrides.value[uuid]) {
+    printMediaOverrides.value[uuid] = {};
+  }
+  printMediaOverrides.value[uuid].scale = scale;
+  nextTick(() => {
+    updateMeasuredHeights();
+  });
+}
+
+function setImageAlign(uuid: string, align: 'flex-start' | 'center' | 'flex-end') {
+  if (!printMediaOverrides.value[uuid]) {
+    printMediaOverrides.value[uuid] = {};
+  }
+  printMediaOverrides.value[uuid].align = align;
+  nextTick(() => {
+    updateMeasuredHeights();
+  });
+}
+
 const currentLineHeight = computed(() => {
   switch (config.lineSpacing) {
     case 'compact': return '1.32';
@@ -542,10 +650,7 @@ function updateMeasuredHeights() {
   items.forEach((el) => {
     const uuid = el.getAttribute('data-uuid');
     if (uuid) {
-      const mb = customSpacings.value[uuid] !== undefined
-        ? customSpacings.value[uuid]
-        : currentProblemMarginBottom.value;
-      heights[uuid] = el.offsetHeight + mb;
+      heights[uuid] = el.offsetHeight;
     }
   });
   problemHeights.value = heights;
@@ -729,26 +834,37 @@ const paginatedPages = computed<PageData[]>(() => {
 
   const pages: PageData[] = [];
   let currentItems: PageItem[] = [];
-  let currentHeight = 0;
+  let currentOccupiedHeight = 0; // 当前页所有题目内容高度 + 题目间留白总和（最后一题不含尾随留白）
 
   for (let i = 0; i < props.printCart.length; i++) {
     const prob = props.printCart[i];
-    const h = problemHeights.value[prob.uuid] || 150;
+    const itemHeight = problemHeights.value[prob.uuid] || 120;
     const maxAllowed = pages.length === 0 ? maxH_first : maxH_other;
 
-    if (currentItems.length > 0 && currentHeight + h > maxAllowed) {
-      pages.push({
-        pageNumber: pages.length + 1,
-        items: currentItems,
-        isFirstPage: pages.length === 0,
-        remainingHeight: Math.max(0, maxAllowed - currentHeight),
-      });
-      currentItems = [];
-      currentHeight = 0;
-    }
+    if (currentItems.length === 0) {
+      currentItems.push({ problem: prob, index: i });
+      currentOccupiedHeight = itemHeight;
+    } else {
+      const prevUuid = currentItems[currentItems.length - 1].problem.uuid;
+      const prevSpacing = customSpacings.value[prevUuid] !== undefined
+        ? customSpacings.value[prevUuid]
+        : currentProblemMarginBottom.value;
+      const neededHeight = currentOccupiedHeight + prevSpacing + itemHeight;
 
-    currentItems.push({ problem: prob, index: i });
-    currentHeight += h;
+      if (neededHeight <= maxAllowed) {
+        currentItems.push({ problem: prob, index: i });
+        currentOccupiedHeight = neededHeight;
+      } else {
+        pages.push({
+          pageNumber: pages.length + 1,
+          items: currentItems,
+          isFirstPage: pages.length === 0,
+          remainingHeight: Math.max(0, maxAllowed - currentOccupiedHeight),
+        });
+        currentItems = [{ problem: prob, index: i }];
+        currentOccupiedHeight = itemHeight;
+      }
+    }
   }
 
   if (currentItems.length > 0) {
@@ -757,7 +873,7 @@ const paginatedPages = computed<PageData[]>(() => {
       pageNumber: pages.length + 1,
       items: currentItems,
       isFirstPage: pages.length === 0,
-      remainingHeight: Math.max(0, maxAllowed - currentHeight),
+      remainingHeight: Math.max(0, maxAllowed - currentOccupiedHeight),
     });
   }
 
@@ -787,12 +903,17 @@ function generateFullPrintHtml(): string {
       </div>
     ` : '';
 
-    const problemsHtml = page.items.map((item) => {
-      const mb = customSpacings.value[item.problem.uuid] !== undefined
-        ? `${customSpacings.value[item.problem.uuid]}px`
-        : problemMarginBottom;
+    const problemsHtml = page.items.map((item, idx) => {
+      const isLast = idx === page.items.length - 1;
+      const mb = isLast
+        ? '0px'
+        : (customSpacings.value[item.problem.uuid] !== undefined
+            ? `${customSpacings.value[item.problem.uuid]}px`
+            : problemMarginBottom);
+      const scale = getImageScale(item.problem.uuid);
+      const align = getImageAlign(item.problem.uuid);
       return `
-      <div class="paper-problem-wrapper" style="margin-bottom: ${mb};">
+      <div class="paper-problem-wrapper" style="margin-bottom: ${mb}; --print-img-scale: ${scale}; --print-img-align: ${align};">
         ${formatProblemForExam(item.problem.raw_html, item.index + 1)}
       </div>
     `;
@@ -913,7 +1034,21 @@ function generateFullPrintHtml(): string {
     .paper-problem-wrapper {
       break-inside: avoid !important;
       page-break-inside: avoid !important;
-      margin-bottom: ${problemMarginBottom};
+    }
+    .paper-problem-wrapper .img {
+      display: flex !important;
+      justify-content: var(--print-img-align, center) !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    .paper-problem-wrapper .img svg,
+    .paper-problem-wrapper .img img {
+      zoom: var(--print-img-scale, 1);
+      max-width: calc(100% * var(--print-img-scale, 1)) !important;
+      max-height: calc(260px * var(--print-img-scale, 1)) !important;
+      width: auto !important;
+      height: auto !important;
+      object-fit: contain !important;
     }
     .index-num {
       font-size: ${fontSize} !important;
@@ -1312,7 +1447,7 @@ async function handleExportPdfDirect() {
 }
 
 .segment-btn:hover:not(.active) {
-  background-color: rgba(var(--md-sys-color-on-surface), 0.06);
+  background-color: var(--md-sys-color-surface-container-highest);
   color: var(--md-sys-color-on-surface);
 }
 
@@ -1857,6 +1992,276 @@ async function handleExportPdfDirect() {
 :deep(.exam-row-group svg) {
   width: 100% !important;
   height: auto !important;
+}
+
+/* M3 打印配图悬浮控制胶囊 (与编辑页面设计语言一脉相承) */
+.paper-problem-wrapper {
+  position: relative;
+}
+
+.paper-problem-wrapper:hover .print-media-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.print-media-toolbar {
+  position: absolute;
+  top: -14px;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: var(--md-sys-color-surface-container-high, #ece6f0);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--md-sys-color-outline-variant, #cac4d0);
+  border-radius: var(--md-shape-corner-full, 9999px);
+  box-shadow: var(--md-elevation-3, 0px 4px 8px 3px rgba(0, 0, 0, 0.15));
+  font-size: 11px;
+  z-index: 25;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: all 0.18s cubic-bezier(0.2, 0, 0, 1);
+  pointer-events: none;
+  user-select: none;
+}
+
+[data-theme="dark"] .print-media-toolbar,
+.dark .print-media-toolbar {
+  background: rgba(39, 42, 49, 0.94) !important;
+  border-color: var(--md-sys-color-outline-variant, #3a3d45) !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55) !important;
+  color: var(--md-sys-color-on-surface, #e2e2e6) !important;
+}
+
+.print-media-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.media-toolbar-title {
+  color: var(--md-sys-color-on-surface-variant, #49454f);
+  font-size: 10.5px;
+  font-weight: 600;
+  margin-right: 2px;
+  padding: 0 2px;
+  letter-spacing: 0.2px;
+}
+
+[data-theme="dark"] .media-toolbar-title,
+.dark .media-toolbar-title {
+  color: var(--md-sys-color-on-surface-variant, #c3c7cf) !important;
+}
+
+.media-toolbar-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--md-sys-color-outline-variant, #cac4d0);
+  margin: 0 3px;
+}
+
+[data-theme="dark"] .media-toolbar-sep,
+.dark .media-toolbar-sep {
+  background: var(--md-sys-color-outline-variant, #3a3d45) !important;
+}
+
+/* M3 Tonal Segmented Pill 按钮风格 */
+.media-chip-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--md-shape-corner-full, 9999px);
+  height: 22px;
+  padding: 0 7px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface-variant, #49454f);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.14s cubic-bezier(0.2, 0, 0, 1);
+  line-height: 1;
+}
+
+.media-chip-btn:hover {
+  background: var(--md-sys-color-surface-container-highest, #e6e0e9);
+  color: var(--md-sys-color-on-surface, #1d1b20);
+}
+
+.media-chip-btn.active {
+  background: var(--md-sys-color-secondary-container, #d4e4f6) !important;
+  color: var(--md-sys-color-on-secondary-container, #0e1d2a) !important;
+  font-weight: 600;
+}
+
+[data-theme="dark"] .media-chip-btn,
+.dark .media-chip-btn {
+  color: var(--md-sys-color-on-surface-variant, #c3c7cf) !important;
+}
+
+[data-theme="dark"] .media-chip-btn:hover,
+.dark .media-chip-btn:hover {
+  background: var(--md-sys-color-surface-container-highest, #32353d) !important;
+  color: var(--md-sys-color-on-surface, #e2e2e6) !important;
+}
+
+[data-theme="dark"] .media-chip-btn.active,
+.dark .media-chip-btn.active {
+  background: var(--md-sys-color-secondary-container, #3a4857) !important;
+  color: var(--md-sys-color-on-secondary-container, #d4e4f6) !important;
+}
+
+/* 打印配图在预览与排版中的缩放与对齐 */
+.paper-problem-wrapper :deep(.img) {
+  display: flex !important;
+  justify-content: var(--print-img-align, center) !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.paper-problem-wrapper :deep(.img svg),
+.paper-problem-wrapper :deep(.img img) {
+  zoom: var(--print-img-scale, 1);
+  max-width: calc(100% * var(--print-img-scale, 1)) !important;
+  max-height: calc(260px * var(--print-img-scale, 1)) !important;
+  width: auto !important;
+  height: auto !important;
+  object-fit: contain !important;
+  transition: transform 0.2s ease;
+}
+
+/* ============================================================
+   打印界面全量暗黑模式适配 (Material 3 Dark Mode Adaptation)
+   ============================================================ */
+[data-theme="dark"] .paper-sidebar,
+.dark .paper-sidebar {
+  background-color: var(--md-sys-color-surface-container-low, #191c22) !important;
+  border-right-color: var(--md-sys-color-outline-variant, #2e3138) !important;
+}
+
+[data-theme="dark"] .sidebar-header,
+.dark .sidebar-header {
+  background-color: var(--md-sys-color-surface-container, #1f2228) !important;
+  border-bottom-color: var(--md-sys-color-outline-variant, #2e3138) !important;
+}
+
+[data-theme="dark"] .sidebar-footer,
+.dark .sidebar-footer {
+  background-color: var(--md-sys-color-surface-container, #1f2228) !important;
+  border-top-color: var(--md-sys-color-outline-variant, #2e3138) !important;
+}
+
+[data-theme="dark"] .segmented-control,
+.dark .segmented-control {
+  background: var(--md-sys-color-surface-container-highest, #282a30) !important;
+  border-color: var(--md-sys-color-outline-variant, #3a3d45) !important;
+}
+
+[data-theme="dark"] .segment-btn,
+.dark .segment-btn {
+  color: var(--md-sys-color-on-surface-variant, #c3c7cf) !important;
+  border-right-color: var(--md-sys-color-outline-variant, #3a3d45) !important;
+}
+
+[data-theme="dark"] .segment-btn:hover:not(.active),
+.dark .segment-btn:hover:not(.active) {
+  background-color: var(--md-sys-color-surface-container-high, #353840) !important;
+  color: var(--md-sys-color-on-surface, #e2e2e6) !important;
+}
+
+[data-theme="dark"] .segment-btn.active,
+.dark .segment-btn.active {
+  background-color: var(--md-sys-color-secondary-container, #3a4857) !important;
+  color: var(--md-sys-color-on-secondary-container, #d4e4f6) !important;
+}
+
+[data-theme="dark"] .m3-input,
+.dark .m3-input {
+  background-color: var(--md-sys-color-surface-container-lowest, #14161a) !important;
+  border-color: var(--md-sys-color-outline-variant, #3a3d45) !important;
+  color: var(--md-sys-color-on-surface, #e2e2e6) !important;
+}
+
+[data-theme="dark"] .m3-input:focus,
+.dark .m3-input:focus {
+  border-color: var(--md-sys-color-primary, #a8c7fa) !important;
+  box-shadow: 0 0 0 2px rgba(168, 199, 250, 0.25) !important;
+}
+
+[data-theme="dark"] .basket-item-row,
+.dark .basket-item-row {
+  background: var(--md-sys-color-surface-container-lowest, #14161a) !important;
+  border-color: var(--md-sys-color-outline-variant, #2b2e35) !important;
+}
+
+[data-theme="dark"] .basket-item-row:hover,
+.dark .basket-item-row:hover {
+  background: var(--md-sys-color-surface-container, #202329) !important;
+  border-color: var(--md-sys-color-outline, #44474e) !important;
+}
+
+[data-theme="dark"] .empty-basket,
+.dark .empty-basket {
+  background: var(--md-sys-color-surface-container-low, #191c22) !important;
+  border-color: var(--md-sys-color-outline-variant, #2e3138) !important;
+  color: var(--md-sys-color-outline, #8a8d95) !important;
+}
+
+[data-theme="dark"] .paper-preview-area,
+.dark .paper-preview-area {
+  background-color: #121316 !important;
+}
+
+[data-theme="dark"] .zoom-floating-toolbar,
+.dark .zoom-floating-toolbar {
+  background: rgba(39, 42, 49, 0.94) !important;
+  border-color: var(--md-sys-color-outline-variant, #3a3d45) !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55) !important;
+}
+
+[data-theme="dark"] .zoom-btn,
+.dark .zoom-btn {
+  color: var(--md-sys-color-on-surface, #e2e2e6) !important;
+}
+
+[data-theme="dark"] .zoom-btn:hover:not(:disabled),
+.dark .zoom-btn:hover:not(:disabled) {
+  background-color: var(--md-sys-color-surface-container-highest, #32353d) !important;
+}
+
+[data-theme="dark"] .zoom-reset-btn,
+.dark .zoom-reset-btn {
+  color: var(--md-sys-color-primary, #a8c7fa) !important;
+}
+
+[data-theme="dark"] .zoom-reset-btn:hover,
+.dark .zoom-reset-btn:hover {
+  background-color: var(--md-sys-color-surface-container-highest, #32353d) !important;
+}
+
+[data-theme="dark"] .m3-slider,
+.dark .m3-slider {
+  background: var(--md-sys-color-surface-container-highest, #32353d) !important;
+}
+
+[data-theme="dark"] .slider-val-badge,
+.dark .slider-val-badge {
+  background-color: var(--md-sys-color-primary-container, #00497d) !important;
+  color: var(--md-sys-color-on-primary-container, #d1e4ff) !important;
+}
+
+[data-theme="dark"] .m3-switch-track,
+.dark .m3-switch-track {
+  background-color: var(--md-sys-color-surface-container-highest, #32353d) !important;
+  border-color: var(--md-sys-color-outline, #8e9199) !important;
+}
+
+[data-theme="dark"] .m3-switch-thumb,
+.dark .m3-switch-thumb {
+  background-color: var(--md-sys-color-outline, #8e9199) !important;
 }
 </style>
 

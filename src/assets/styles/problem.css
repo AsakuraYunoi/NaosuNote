@@ -52,9 +52,17 @@ body.print-paper-body .sub-item {
 
 /* 深色模式下错题卡片与编辑态画板适配（仅配图矢量 SVG，严格排除 KaTeX 根号等公式内部矢量） */
 [data-theme="dark"] .m3-problem-card .problem-body .img svg,
-[data-theme="dark"] .word-document-content .img svg {
+[data-theme="dark"] .word-document-content .img svg,
+[data-theme="dark"] .problem-document-content .img svg,
+[data-theme="dark"] .problem-document-content .canvas-media-shell svg,
+[data-theme="dark"] .problem-document-content .exam-images-row svg {
   filter: invert(0.88) hue-rotate(180deg);
 }
+
+[data-theme="dark"] .katex svg {
+  filter: none !important;
+}
+
 .word-document-content .img {
   overflow: visible !important;
 }
@@ -63,22 +71,26 @@ body.print-paper-body .sub-item {
   max-height: none !important;
 }
 [data-theme="dark"] .m3-problem-card table,
-[data-theme="dark"] .word-document-content table {
+[data-theme="dark"] .word-document-content table,
+[data-theme="dark"] .problem-document-content table {
   border-top-color: #e2e2e6 !important;
   border-bottom-color: #e2e2e6 !important;
 }
 [data-theme="dark"] .m3-problem-card thead tr,
-[data-theme="dark"] .word-document-content thead tr {
+[data-theme="dark"] .word-document-content thead tr,
+[data-theme="dark"] .problem-document-content thead tr {
   border-bottom-color: #e2e2e6 !important;
-  background-color: rgba(255, 255, 255, 0.06) !important;
+  background-color: rgba(255, 255, 255, 0.08) !important;
 }
 [data-theme="dark"] .m3-problem-card th,
-[data-theme="dark"] .word-document-content th {
+[data-theme="dark"] .word-document-content th,
+[data-theme="dark"] .problem-document-content th {
   color: #e2e2e6 !important;
 }
 [data-theme="dark"] .m3-problem-card td,
-[data-theme="dark"] .word-document-content td {
-  border-bottom-color: #3a3d45 !important;
+[data-theme="dark"] .word-document-content td,
+[data-theme="dark"] .problem-document-content td {
+  border-bottom-color: rgba(255, 255, 255, 0.15) !important;
   color: #c3c7cf !important;
 }
 

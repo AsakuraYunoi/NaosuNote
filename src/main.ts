@@ -1,10 +1,8 @@
 import { createApp } from 'vue';
-import AppDesktop from './App.vue';
-import AppPhone from './App_phoneOnly.vue';
+import AppRoot from './AppRoot.vue';
 import 'katex/dist/katex.min.css';
 import './assets/styles/base.css';
 import { initTheme } from './utils/theme';
-import { apiGetDeviceInfo } from './utils/api';
 
 initTheme();
 
@@ -42,7 +40,14 @@ try {
 
 window.addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
-  if (typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) return;
+  // 排除触控移动与平板设备 (Android, iPhone, iPad)
+  if (
+    typeof navigator !== 'undefined' &&
+    (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
+  ) {
+    return;
+  }
   const target = e.target as HTMLElement | null;
   if (!target) return;
 
@@ -69,24 +74,6 @@ window.addEventListener('mousedown', (e) => {
   }
 });
 
-async function bootstrap() {
-  // 1. 通过原生硬件、UA 与视口环境精确检测设备形态
-  const deviceInfo = await apiGetDeviceInfo();
-  console.log('[NaosuNote] Initialized device info:', deviceInfo);
+// 挂载响应式多端形态根组件 (平板横屏桌面端 / 平板竖屏移动端 / 手机端 / 桌面端)
+createApp(AppRoot).mount('#app');
 
-  // 2. 移动端与桌面端分流挂载：
-  //    - 只要是 Android、iOS 手机或视口宽度 < 768px 的移动触控环境，强制挂载移动端适配根组件 AppPhone
-  //    - 桌面端 (macOS/Windows/Linux) 挂载包含多窗口与侧边栏的桌面组件 AppDesktop
-  const isMobile =
-    deviceInfo.form_factor === 'phone' ||
-    deviceInfo.os === 'android' ||
-    deviceInfo.os === 'ios' ||
-    deviceInfo.platform === 'mobile' ||
-    (typeof window !== 'undefined' && (/Android|iPhone|iPod/i.test(navigator.userAgent) || window.innerWidth < 768));
-
-  const RootComponent = isMobile ? AppPhone : AppDesktop;
-
-  createApp(RootComponent).mount('#app');
-}
-
-bootstrap();

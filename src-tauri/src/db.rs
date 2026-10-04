@@ -531,15 +531,17 @@ impl DbManager {
         let answer_images_json = serde_json::to_string(&problem.answer_images.clone().unwrap_or_default()).unwrap_or_else(|_| "[]".to_string());
         let custom_u_at = problem.updated_at.as_deref();
 
+        let custom_cr_at = problem.created_at.as_deref();
+
         if let Some(ts) = custom_u_at {
             conn.execute(
                 "INSERT INTO problems (uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, answer_markdown, answer_images, is_deleted, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 0, CURRENT_TIMESTAMP, ?14)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 0, COALESCE(?15, CURRENT_TIMESTAMP), ?14)
                  ON CONFLICT(uuid) DO UPDATE SET
                     notebook_id = excluded.notebook_id,
                     subject = excluded.subject,
                     type = excluded.type,
-                    date = excluded.date,
+                    date = COALESCE(excluded.date, problems.date),
                     summary = excluded.summary,
                     raw_html = excluded.raw_html,
                     stem_clean_text = excluded.stem_clean_text,
@@ -548,6 +550,7 @@ impl DbManager {
                     tags = excluded.tags,
                     answer_markdown = excluded.answer_markdown,
                     answer_images = excluded.answer_images,
+                    created_at = COALESCE(problems.created_at, excluded.created_at),
                     is_deleted = 0,
                     updated_at = ?14;",
                 params![
@@ -565,17 +568,18 @@ impl DbManager {
                     problem.answer_markdown.clone().unwrap_or_default(),
                     answer_images_json,
                     ts,
+                    custom_cr_at,
                 ],
             )?;
         } else {
             conn.execute(
                 "INSERT INTO problems (uuid, notebook_id, subject, type, date, summary, raw_html, stem_clean_text, difficulty, importance, tags, answer_markdown, answer_images, is_deleted, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 0, COALESCE(?14, CURRENT_TIMESTAMP), CURRENT_TIMESTAMP)
                  ON CONFLICT(uuid) DO UPDATE SET
                     notebook_id = excluded.notebook_id,
                     subject = excluded.subject,
                     type = excluded.type,
-                    date = excluded.date,
+                    date = COALESCE(excluded.date, problems.date),
                     summary = excluded.summary,
                     raw_html = excluded.raw_html,
                     stem_clean_text = excluded.stem_clean_text,
@@ -584,6 +588,7 @@ impl DbManager {
                     tags = excluded.tags,
                     answer_markdown = excluded.answer_markdown,
                     answer_images = excluded.answer_images,
+                    created_at = COALESCE(problems.created_at, excluded.created_at),
                     is_deleted = 0,
                     updated_at = CURRENT_TIMESTAMP;",
                 params![
@@ -600,6 +605,7 @@ impl DbManager {
                     tags_json,
                     problem.answer_markdown.clone().unwrap_or_default(),
                     answer_images_json,
+                    custom_cr_at,
                 ],
             )?;
         }
@@ -1080,7 +1086,39 @@ impl DbManager {
         tx.commit()?;
         Ok(updated_count)
     }
+
+    pub fn is_image_referenced_by_active_problem(&self, filename: &str) -> Result<bool> {
+        let conn = self.get_connection()?;
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM problems WHERE is_deleted = 0 AND answer_images LIKE '%' || ?1 || '%'",
+            params![filename],
+            |r| r.get(0),
+        ).unwrap_or(0);
+        Ok(count > 0)
+    }
+
+    pub fn get_all_active_problem_images(&self) -> Result<Vec<String>> {
+        let conn = self.get_connection()?;
+        let mut stmt = conn.prepare("SELECT answer_images FROM problems WHERE is_deleted = 0")?;
+        let rows = stmt.query_map([], |row| {
+            let s: Option<String> = row.get(0)?;
+            Ok(s.unwrap_or_else(|| "[]".to_string()))
+        })?;
+        let mut set = std::collections::HashSet::new();
+        for r in rows.flatten() {
+            if let Ok(imgs) = serde_json::from_str::<Vec<String>>(&r) {
+                for img in imgs {
+                    let trimmed = img.trim();
+                    if !trimmed.is_empty() {
+                        set.insert(trimmed.to_string());
+                    }
+                }
+            }
+        }
+        Ok(set.into_iter().collect())
+    }
 }
+
 
 #[cfg(test)]
 mod tests {

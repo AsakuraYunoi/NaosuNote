@@ -13,7 +13,7 @@
 		4DD6B4716EB07C28DA9CB942 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3D8E9A073F9C957B4CE83AD5 /* Security.framework */; };
 		5A256FBDAFB3716EBC5A351F /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EB33AED81A2DBA6D26438439 /* WebKit.framework */; };
 		5E165ED2EE5FE3F008E727B7 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F5265FDA3B291E611454D923 /* QuartzCore.framework */; };
-		66897C3165A936B8C77D5CC5 /* libapp.a in Resources */ = {isa = PBXBuildFile; fileRef = 2721EFB8331F2AF98422440A /* libapp.a */; };
+		6856A103193ECE5DC0DD4C95 /* SwiftRs.swift in Sources */ = {isa = PBXBuildFile; fileRef = C11A8598D22A0442F1C7AF72 /* SwiftRs.swift */; };
 		89538131268E43DECF601370 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 0C145DBB2BE7726B4D068C09 /* main.mm */; };
 		91D1F8CF4165D03E3762E26B /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 861DDBB978B81E99353DB00D /* LaunchScreen.storyboard */; };
 		9617429D6C834BB7A73D8FF1 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A97E0C4D2D8DF92031E04200 /* Metal.framework */; };
@@ -31,7 +31,6 @@
 		1E397A49B643A561C29AF1B0 /* mirror.rs */ = {isa = PBXFileReference; path = mirror.rs; sourceTree = "<group>"; };
 		1F67BA5197098DE78C90E9F4 /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
 		232424745163539DC6A11316 /* common.rs */ = {isa = PBXFileReference; path = common.rs; sourceTree = "<group>"; };
-		2721EFB8331F2AF98422440A /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
 		2DC31972D8341B9BED662F53 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3D8E9A073F9C957B4CE83AD5 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
 		41048EFD8FAE2A12F8F57A59 /* windows.rs */ = {isa = PBXFileReference; path = windows.rs; sourceTree = "<group>"; };
@@ -44,6 +43,7 @@
 		A0C0ABC692D0AA66172914F0 /* commands.rs */ = {isa = PBXFileReference; path = commands.rs; sourceTree = "<group>"; };
 		A97E0C4D2D8DF92031E04200 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
 		B302A95497560F8E9AADF89F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		C11A8598D22A0442F1C7AF72 /* SwiftRs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwiftRs.swift; sourceTree = "<group>"; };
 		CDE49B13840F85C949A65148 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
 		D00B890FB2ADDDE95B1A1728 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
 		D80273EEA8369BC1DCDD1BBB /* macos.rs */ = {isa = PBXFileReference; path = macos.rs; sourceTree = "<group>"; };
@@ -76,17 +76,8 @@
 		08BCC476432A1A5554B05CCC /* Externals */ = {
 			isa = PBXGroup;
 			children = (
-				A9043C33D471A8EC9D3829E2 /* arm64 */,
 			);
 			path = Externals;
-			sourceTree = "<group>";
-		};
-		23825353C5B13F724D3B636E /* release */ = {
-			isa = PBXGroup;
-			children = (
-				2721EFB8331F2AF98422440A /* libapp.a */,
-			);
-			path = release;
 			sourceTree = "<group>";
 		};
 		56C098495F7CD8189AD7F4BB /* Sources */ = {
@@ -127,17 +118,10 @@
 			isa = PBXGroup;
 			children = (
 				0C145DBB2BE7726B4D068C09 /* main.mm */,
+				C11A8598D22A0442F1C7AF72 /* SwiftRs.swift */,
 				D42CD1F562490A11174A5596 /* bindings */,
 			);
 			path = naosunote;
-			sourceTree = "<group>";
-		};
-		A9043C33D471A8EC9D3829E2 /* arm64 */ = {
-			isa = PBXGroup;
-			children = (
-				23825353C5B13F724D3B636E /* release */,
-			);
-			path = arm64;
 			sourceTree = "<group>";
 		};
 		D42CD1F562490A11174A5596 /* bindings */ = {
@@ -197,7 +181,14 @@
 			);
 			sourceTree = "<group>";
 		};
-		"TEMP_730A5DA0-45A9-4A0C-8A98-0C25758CB968" /* x86_64 */ = {
+		"TEMP_33F2FD37-818D-41F5-BA14-C6486519AB38" /* arm64 */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = arm64;
+			sourceTree = "<group>";
+		};
+		"TEMP_CD1FDC20-A735-47C7-9933-DAE475897252" /* x86_64 */ = {
 			isa = PBXGroup;
 			children = (
 			);
@@ -265,7 +256,6 @@
 				34C3764B304595DDED885399 /* Assets.xcassets in Resources */,
 				91D1F8CF4165D03E3762E26B /* LaunchScreen.storyboard in Resources */,
 				FF16765D22DF46852EB25645 /* assets in Resources */,
-				66897C3165A936B8C77D5CC5 /* libapp.a in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -291,7 +281,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ -f \"/var/folders/zw/qw501ygx2hngv94wlk9j711c0000gn/T/com.naosunote.app-server-addr\" ]; then\n  pnpm tauri ios xcode-script -v --platform ${PLATFORM_DISPLAY_NAME:?} --sdk-root ${SDKROOT:?} --framework-search-paths \"${FRAMEWORK_SEARCH_PATHS:?}\" --header-search-paths \"${HEADER_SEARCH_PATHS:?}\" --gcc-preprocessor-definitions \"${GCC_PREPROCESSOR_DEFINITIONS:-}\" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}\nelse\n  mkdir -p \"${SRCROOT}/Externals/arm64/${CONFIGURATION}\"\n  cp -f \"${SRCROOT}/../../target/aarch64-apple-ios/release/libapp_lib.a\" \"${SRCROOT}/Externals/arm64/${CONFIGURATION}/libapp.a\" 2>/dev/null || true\nfi\n";
+			shellScript = "mkdir -p \"${SRCROOT}/Externals/arm64/${CONFIGURATION}\"\nif [ ! -f \"${SRCROOT}/Externals/arm64/${CONFIGURATION}/libapp.a\" ]; then\n  cp -f \"${SRCROOT}/../../target/aarch64-apple-ios/release/libapp_lib.a\" \"${SRCROOT}/Externals/arm64/${CONFIGURATION}/libapp.a\" 2>/dev/null || true\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -300,6 +290,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6856A103193ECE5DC0DD4C95 /* SwiftRs.swift in Sources */,
 				89538131268E43DECF601370 /* main.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

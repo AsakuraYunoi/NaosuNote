@@ -66,6 +66,7 @@ pub fn run() {
             delete_answer_image,
             read_answer_image,
             get_local_image_filenames,
+            prune_local_unreferenced_images,
             update_problem_answer,
             create_tag,
             rename_tag,

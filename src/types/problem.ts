@@ -38,6 +38,7 @@ export interface ProblemInput {
   tags?: string[];
   answer_markdown?: string;
   answer_images?: string[];
+  created_at?: string;
   updated_at?: string;
   is_deleted?: number;
 }

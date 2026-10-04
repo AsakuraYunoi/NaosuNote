@@ -184,7 +184,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import type { Notebook, Problem, ProblemInput, TagCount } from '../types/problem';
 import { parseProblemHtml } from '../utils/parser';
 import { formatProblemForExam } from '../utils/examFormatter';
@@ -194,6 +194,7 @@ import {
   apiSaveProblem,
   apiIncrementImportance,
   apiGetTags,
+  triggerSilentCloudSync,
 } from '../utils/api';
 import DuplicateDialog from '../components/DuplicateDialog.vue';
 import {
@@ -236,8 +237,20 @@ const pendingProblem = ref<ProblemInput | null>(null);
 const pendingQueue = ref<ProblemInput[]>([]);
 
 onMounted(async () => {
+  window.addEventListener('naosu:back', handleMobileBack);
   await loadNotebooks();
 });
+
+onUnmounted(() => {
+  window.removeEventListener('naosu:back', handleMobileBack);
+});
+
+function handleMobileBack(e: Event) {
+  if (showDupDialog.value) {
+    showDupDialog.value = false;
+    e.preventDefault();
+  }
+}
 
 async function loadNotebooks() {
   try {
@@ -369,6 +382,7 @@ async function processNextInQueue() {
     rawInput.value = '';
     parsedProblems.value = [];
     emit('nav', 'library');
+    triggerSilentCloudSync();
     return;
   }
 

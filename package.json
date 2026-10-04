@@ -12,7 +12,9 @@
     "icon": "tauri icon src-tauri/app-icon.svg",
     "package:macos": "bash platforms/macos/scripts/package-app.sh",
     "package:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File platforms/windows/scripts/package-portable.ps1",
-    "package:android": "bash platforms/android/scripts/package-apk.sh"
+    "package:android": "bash platforms/android/scripts/package-apk.sh",
+    "package:ios": "bash platforms/ios/scripts/package-ipa.sh",
+    "package:ipad": "bash platforms/ios/scripts/package-ipa.sh"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

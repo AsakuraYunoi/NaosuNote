@@ -252,7 +252,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import type { Notebook } from '../types/problem';
 import StorageDirModal_phoneOnly from '../components/StorageDirModal_phoneOnly.vue';
 import {
@@ -310,8 +310,31 @@ function selectThemeMode(mode: ThemeMode) {
 }
 
 onMounted(() => {
+  window.addEventListener('naosu:back', handleMobileBack);
   loadData();
 });
+
+onUnmounted(() => {
+  window.removeEventListener('naosu:back', handleMobileBack);
+});
+
+function handleMobileBack(e: Event) {
+  if (showStorageModal.value) {
+    showStorageModal.value = false;
+    e.preventDefault();
+    return;
+  }
+  if (nbToDelete.value) {
+    nbToDelete.value = null;
+    e.preventDefault();
+    return;
+  }
+  if (nbToRename.value) {
+    nbToRename.value = null;
+    e.preventDefault();
+    return;
+  }
+}
 
 async function loadData() {
   try {

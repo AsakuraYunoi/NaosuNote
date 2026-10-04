@@ -48,7 +48,7 @@
         :images="imageFiles"
         :current-index="currentPhotoIndex"
         :image-url-map="imageUrlMap"
-        @upload="processAndSaveImage"
+        @upload="handleUpload"
         @delete="removeCurrentImage"
         @download="downloadCurrentImage"
         @reorder="handleReorderImages"
@@ -68,6 +68,7 @@ import AnswerAiPane from './components/AnswerAiPane.vue';
 import AnswerPhotoPane from './components/AnswerPhotoPane.vue';
 import {
   apiSaveAnswerImage,
+  apiSaveAnswerImageByFilename,
   apiDeleteAnswerImage,
   apiReadAnswerImage,
   apiExportAnswerImage,
@@ -193,14 +194,86 @@ async function compressImageToWebp(fileOrBlob: Blob): Promise<Uint8Array> {
   });
 }
 
+async function calculateSha256(data: ArrayBuffer | Uint8Array): Promise<string> {
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data as ArrayBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+const imageHashMap = ref<Record<string, string>>({});
+const imageRawHashMap = ref<Record<string, string>>({});
+let imageProcessingQueue: Promise<void> = Promise.resolve();
+
+async function handleUpload(file: Blob) {
+  imageProcessingQueue = imageProcessingQueue
+    .then(async () => {
+      await processAndSaveImage(file);
+    })
+    .catch((err) => {
+      console.error('Image upload processing failed:', err);
+    });
+  await imageProcessingQueue;
+}
+
+async function ensureImageHashesLoaded() {
+  for (const filename of imageFiles.value) {
+    if (!imageHashMap.value[filename]) {
+      try {
+        const bytes = await apiReadAnswerImage(filename);
+        if (bytes) {
+          imageHashMap.value[filename] = await calculateSha256(bytes);
+        }
+      } catch (err) {
+        console.warn('Failed to calculate hash for', filename, err);
+      }
+    }
+  }
+}
+
 async function processAndSaveImage(blob: Blob) {
   try {
-    emit('notify', '正在保存图片...');
+    emit('notify', '正在处理并校验图片...');
+
+    // 1. 计算原始文件/图片二进制 SHA-256 哈希
+    const rawBuffer = await blob.arrayBuffer();
+    const rawHash = await calculateSha256(rawBuffer);
+
+    // 2. 预先确保当前题目的所有既有图片哈希已完全就绪
+    await ensureImageHashesLoaded();
+
+    // 检查是否存在原始文件二进制完全相同的图片
+    for (const [fn, h] of Object.entries(imageRawHashMap.value)) {
+      if (h === rawHash && imageFiles.value.includes(fn)) {
+        const dupIdx = imageFiles.value.indexOf(fn);
+        currentPhotoIndex.value = Math.max(0, dupIdx);
+        primaryMode.value = 'photo';
+        emit('notify', `检测到已存在相同的解答图片 (P${dupIdx + 1})，已自动跳过重复添加`);
+        return;
+      }
+    }
+
+    // 3. 压缩为 WebP 标准字节
     const compressedBytes = await compressImageToWebp(blob);
-    const pageIndex = imageFiles.value.length + 1;
-    const filename = await apiSaveAnswerImage(props.problemUuid, pageIndex, compressedBytes);
+    const webpHash = await calculateSha256(compressedBytes);
+
+    // 4. 对比压缩后 WebP 的 SHA-256 哈希
+    for (const [fn, h] of Object.entries(imageHashMap.value)) {
+      if (h === webpHash && imageFiles.value.includes(fn)) {
+        const dupIdx = imageFiles.value.indexOf(fn);
+        currentPhotoIndex.value = Math.max(0, dupIdx);
+        primaryMode.value = 'photo';
+        emit('notify', `检测到已存在相同的解答图片 (P${dupIdx + 1})，已自动跳过重复添加`);
+        return;
+      }
+    }
+
+    // 5. 保存到本地存储：基于题目 UUID + 哈希前 16 位命名，彻底规避按序号命名覆盖冲突与服务端判定已存在漏同步问题
+    const filename = `${props.problemUuid}_${webpHash.slice(0, 16)}.webp`;
+    await apiSaveAnswerImageByFilename(filename, compressedBytes);
 
     imageFiles.value.push(filename);
+    imageHashMap.value[filename] = webpHash;
+    imageRawHashMap.value[filename] = rawHash;
     currentPhotoIndex.value = imageFiles.value.length - 1;
 
     // Cache local blob url
@@ -209,7 +282,7 @@ async function processAndSaveImage(blob: Blob) {
 
     primaryMode.value = 'photo';
     notifyChange();
-    emit('notify', `已添加图片 P${pageIndex}`);
+    emit('notify', `已添加解答图片 P${imageFiles.value.length}`);
   } catch (e: any) {
     emit('notify', '保存失败: ' + (e?.message || e));
   }
@@ -223,6 +296,9 @@ async function loadAllImages() {
         if (bytes) {
           const blob = new Blob([bytes], { type: 'image/webp' });
           imageUrlMap.value[filename] = URL.createObjectURL(blob);
+          if (!imageHashMap.value[filename]) {
+            imageHashMap.value[filename] = await calculateSha256(bytes);
+          }
         }
       } catch (err) {
         console.warn('Failed to load image', filename, err);
@@ -242,6 +318,9 @@ async function removeCurrentImage(idx: number) {
       URL.revokeObjectURL(imageUrlMap.value[filename]);
       delete imageUrlMap.value[filename];
     }
+    delete imageHashMap.value[filename];
+    delete imageRawHashMap.value[filename];
+
     if (currentPhotoIndex.value >= imageFiles.value.length) {
       currentPhotoIndex.value = Math.max(0, imageFiles.value.length - 1);
     }
@@ -276,7 +355,7 @@ function handleGlobalPaste(e: ClipboardEvent) {
         e.preventDefault();
         const blob = item.getAsFile();
         if (blob) {
-          processAndSaveImage(blob);
+          handleUpload(blob);
           return;
         }
       }

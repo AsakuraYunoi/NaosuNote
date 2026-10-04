@@ -118,6 +118,23 @@ pnpm run package:windows
 # 产物输出至 release-portable/NaosuNote_0.2.2_x64.exe 与对应 Zip
 ```
 
+### 4. iPad / iOS IPA 安装包打包 (.ipa)
+
+```bash
+# 方式一：一键快速打包 (免证书 / 通用侧载安装模式)
+pnpm run package:ipad
+# 或
+pnpm run package:ios
+
+# 方式二：直接执行脚本并可附加签名参数
+bash platforms/ios/scripts/package-ipa.sh
+
+# 可选附加参数示例：
+# bash platforms/ios/scripts/package-ipa.sh --team <DEVELOPMENT_TEAM_ID>  # 指定 Apple 开发者 Team ID
+# bash platforms/ios/scripts/package-ipa.sh --sign "Apple Development: ..." # 指定开发者证书签名
+```
+> 📦 产物统一归集至 `release-portable/NaosuNote_0.2.2_iPad.ipa`。支持 TrollStore（巨魔商店免签直装）、AltStore / Sideloadly（免费个人 Apple ID 自签）、爱思助手本地安装或 Xcode 直装。
+
 ---
 
 ## 目录结构概览

@@ -55,6 +55,7 @@ pub struct ProblemInput {
     pub tags: Option<Vec<String>>,
     pub answer_markdown: Option<String>,
     pub answer_images: Option<Vec<String>>,
+    pub created_at: Option<String>,
     pub updated_at: Option<String>,
     #[serde(default)]
     pub is_deleted: Option<i32>,

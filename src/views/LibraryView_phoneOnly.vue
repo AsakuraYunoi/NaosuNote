@@ -593,7 +593,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, onActivated } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick, onActivated } from 'vue';
 import {
   Search,
   X,
@@ -697,6 +697,7 @@ const sortOptions = [
 const typeOptions = ['all', '单选', '多选', '填空', '简答'];
 
 onMounted(async () => {
+  window.addEventListener('naosu:back', handleMobileBack);
   await loadData();
 
   // 若从其他页面携带了学科或错题本上下文，恢复定位
@@ -707,6 +708,43 @@ onMounted(async () => {
     selectedNotebookId.value = props.targetNotebookId;
   }
 });
+
+onUnmounted(() => {
+  window.removeEventListener('naosu:back', handleMobileBack);
+});
+
+function handleMobileBack(e: Event) {
+  if (isFabExpanded.value) {
+    isFabExpanded.value = false;
+    e.preventDefault();
+    return;
+  }
+  if (showAddNotebookModal.value) {
+    showAddNotebookModal.value = false;
+    e.preventDefault();
+    return;
+  }
+  if (showTransferDialog.value) {
+    showTransferDialog.value = false;
+    e.preventDefault();
+    return;
+  }
+  if (showTagSheet.value) {
+    showTagSheet.value = false;
+    e.preventDefault();
+    return;
+  }
+  if (showFilterSheet.value) {
+    showFilterSheet.value = false;
+    e.preventDefault();
+    return;
+  }
+  if (isBatchMode.value) {
+    exitBatchMode();
+    e.preventDefault();
+    return;
+  }
+}
 
 onActivated(async () => {
   if (props.targetSubject && subjects.includes(props.targetSubject)) {

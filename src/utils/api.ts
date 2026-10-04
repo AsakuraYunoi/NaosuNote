@@ -113,24 +113,24 @@ export async function apiGetStorageOptions(): Promise<StorageOption[]> {
   if (dev?.os === 'android' || (typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent))) {
     return [
       {
-        id: 'android_docs',
-        name: '系统公共文档目录 (Documents)',
-        path: '/storage/emulated/0/Documents/NaosuNoteData',
-        description: '推荐！可通过手机系统「文件」应用直接访问、管理与备份导出',
+        id: 'android_external_app',
+        name: '外部应用私有目录 (Android/data)',
+        path: '/storage/emulated/0/Android/data/com.naosunote.app/files/NaosuNoteData',
+        description: '推荐！零权限要求，外部扩展存储空间，适合大容量配图与离线镜像存储',
         is_recommended: true,
       },
       {
         id: 'android_internal',
         name: '应用内部沙盒存储',
-        path: '/data/user/0/online.yunoi.naosunote/files/NaosuNoteData',
+        path: '/data/user/0/com.naosunote.app/files/NaosuNoteData',
         description: '免外部存储权限，系统级安全隔离，卸载应用时自动清除',
         is_recommended: false,
       },
       {
-        id: 'android_external_app',
-        name: '外部应用私有目录 (Android/data)',
-        path: '/storage/emulated/0/Android/data/online.yunoi.naosunote/files/NaosuNoteData',
-        description: '外部扩展存储空间，适合大容量配图与离线镜像存储',
+        id: 'android_docs',
+        name: '系统公共文档目录 (Documents)',
+        path: '/storage/emulated/0/Documents/NaosuNoteData',
+        description: '若手机系统已授予全部文件访问权限，可通过手机系统「文件」应用直接访问',
         is_recommended: false,
       },
       {
@@ -663,6 +663,7 @@ export async function apiDeleteProblem(uuid: string): Promise<void> {
   } else {
     mockStorage = mockStorage.filter((p) => p.uuid !== uuid);
   }
+  triggerSilentCloudSync();
 }
 
 export async function apiBackupDatabase(): Promise<string | null> {
@@ -840,6 +841,19 @@ export async function apiGetLocalImageFilenames(): Promise<string[]> {
   const invoke = await getInvoke();
   if (invoke) {
     return await invoke('get_local_image_filenames');
+  }
+  return [];
+}
+
+export async function apiPruneLocalUnreferencedImages(): Promise<string[]> {
+  const invoke = await getInvoke();
+  if (invoke) {
+    try {
+      return await invoke('prune_local_unreferenced_images');
+    } catch (e) {
+      console.warn('Failed to prune local unreferenced images:', e);
+      return [];
+    }
   }
   return [];
 }
@@ -1219,7 +1233,8 @@ export async function apiSyncCloud(
           continue;
         }
 
-        const dateStr = prob.date || new Date().toISOString().split('T')[0];
+        const dateStr = prob.date || local?.date || new Date().toISOString().split('T')[0];
+        const createdSqliteStr = prob.created_at || local?.created_at;
         const updatedSqliteStr = new Date(prob.updated_at || Date.now())
           .toISOString()
           .replace('T', ' ')
@@ -1237,6 +1252,7 @@ export async function apiSyncCloud(
           tags: prob.tags,
           answer_markdown: prob.answer_markdown,
           answer_images: prob.answer_images,
+          created_at: createdSqliteStr,
           updated_at: updatedSqliteStr,
           is_deleted: 0,
         });
@@ -1249,6 +1265,13 @@ export async function apiSyncCloud(
         console.warn('Failed to save pulled problem:', err);
       }
     }
+  }
+
+  // 1.5 整理本地图片缓存，清理已被删除错题遗留的孤儿图片
+  try {
+    await apiPruneLocalUnreferencedImages();
+  } catch (pruneErr) {
+    console.warn('Prune local unreferenced images error:', pruneErr);
   }
 
   // 2. 推送本地数据
@@ -1271,6 +1294,7 @@ export async function apiSyncCloud(
     notebook_id: p.notebook_id,
     subject: p.subject,
     type: p.type,
+    date: p.date,
     summary: p.summary,
     raw_html: p.raw_html,
     stem_clean_text: p.stem_clean_text,
@@ -1279,12 +1303,14 @@ export async function apiSyncCloud(
     tags: p.tags,
     answer_markdown: p.answer_markdown,
     answer_images: p.answer_images,
+    created_at: p.created_at,
     is_deleted: p.is_deleted ? 1 : 0,
     updated_at: parseSqliteUtcToMs(p.updated_at) || Date.now(),
   }));
 
-  // 筛选增量数据（允许 5 秒时钟漂移）
-  const thresholdMs = lastSyncTimestamp > 0 ? Math.max(0, lastSyncTimestamp - 5000) : 0;
+  // 筛选增量数据：使用客户端本地时间基准防范双机时钟漂移（允许 30 秒容差）
+  const lastClientSync = Number(localStorage.getItem('naosu_client_last_sync_timestamp') || '0');
+  const thresholdMs = lastClientSync > 0 ? Math.max(0, lastClientSync - 30000) : 0;
   const filteredProblems = pushProblems.filter((p) => p.updated_at >= thresholdMs);
   const filteredNotebooks = pushNotebooks.filter((n) => n.updated_at >= thresholdMs);
 
@@ -1312,6 +1338,7 @@ export async function apiSyncCloud(
   if (pushRes.ok && pushJson.code === 200) {
     result.pushedProblems = pushJson.data?.applied_problems ?? pushJson.data?.applied_count ?? 0;
     result.pushedNotebooks = pushJson.data?.applied_notebooks ?? 0;
+    localStorage.setItem('naosu_client_last_sync_timestamp', String(Date.now()));
   }
 
   // 3. 同步图片附件
@@ -1323,12 +1350,15 @@ export async function apiSyncCloud(
   for (const p of allActiveProblems) {
     if (p.answer_images && Array.isArray(p.answer_images)) {
       for (const imgName of p.answer_images) {
-        if (imgName && typeof imgName === 'string') {
-          requiredImageSet.add(imgName);
+        if (imgName && typeof imgName === 'string' && imgName.trim()) {
+          requiredImageSet.add(imgName.trim());
         }
       }
     }
   }
+
+  // 本地仅向云端申报属于有效题目的文件，避免上报已删除或孤儿文件
+  const validLocalFiles = localDiskFiles.filter((f) => requiredImageSet.has(f));
 
   try {
     const checkImgRes = await fetch(`${baseUrl}/api/sync/images/check-missing`, {
@@ -1338,7 +1368,7 @@ export async function apiSyncCloud(
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        local_disk_filenames: localDiskFiles,
+        local_disk_filenames: validLocalFiles,
         required_filenames: Array.from(requiredImageSet),
         client_image_filenames: Array.from(requiredImageSet),
       }),
@@ -1433,11 +1463,45 @@ export async function apiSyncCloud(
     localStorage.setItem('naosu_last_sync_time', `今天 ${nowStr}`);
   }
 
+  try {
+    await apiPruneLocalUnreferencedImages();
+  } catch (_) {}
+
   await apiSyncAllMirrors();
   onProgress?.('同步完成');
 
   return result;
 }
+
+// 静默后台自动同步触发器（防抖，用于保存题目、修改解析图片后自动触发云同步）
+let silentSyncTimer: any = null;
+let isSilentSyncing = false;
+
+export function triggerSilentCloudSync(delayMs = 800): void {
+  const token = getAuthToken();
+  if (!token) return;
+
+  if (silentSyncTimer) {
+    clearTimeout(silentSyncTimer);
+  }
+
+  silentSyncTimer = setTimeout(async () => {
+    silentSyncTimer = null;
+    if (isSilentSyncing) return;
+    try {
+      isSilentSyncing = true;
+      const res = await apiSyncCloud();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('naosu:silent-sync-complete', { detail: res }));
+      }
+    } catch (e) {
+      console.warn('[SilentCloudSync] Error during background sync:', e);
+    } finally {
+      isSilentSyncing = false;
+    }
+  }, delayMs);
+}
+
 
 
 

@@ -245,10 +245,14 @@ NaosuNote/
        }
    }
    ```
-2. **动态形态装载**：
-   `main.ts` 根据返回的 `form_factor` 与窗口实际像素宽度：
-   - 宽度 `< 680px` 或移动平台判定为 Phone 时，动态挂载 `App_phoneOnly.vue`；
-   - 其余情况挂载完整版 `App.vue`。
+2. **动态形态装载与横竖屏响应 (`AppRoot.vue`)**：
+   根组件采用自适应响应式路由分发：
+   - **手机端 (Phone)**：始终采用移动端单手交互组件 `App_phoneOnly.vue`；
+   - **平板端 (Pad / iPad)**：
+     - **横屏态 (Landscape)**：必须自动加载完整桌面端布局 `App.vue`（提供侧边导航导轨、双栏联动、大屏画板推演与排版）；
+     - **竖屏态 (Portrait)**：自动切换至移动单列流式布局 `App_phoneOnly.vue`；
+     - 旋转屏幕时通过 `orientationchange` 与 `resize` 监听无缝热切换。
+   - **桌面端 (Desktop)**：始终保持完整桌面端布局 `App.vue`。
 
 ---
 

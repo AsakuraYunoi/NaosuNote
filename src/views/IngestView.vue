@@ -172,6 +172,7 @@ import {
   apiSaveProblem,
   apiIncrementImportance,
   apiGetTags,
+  triggerSilentCloudSync,
 } from '../utils/api';
 import DuplicateDialog from '../components/DuplicateDialog.vue';
 import { Clipboard, Trash2, ArrowDownToLine, X, Plus, Sparkles } from 'lucide-vue-next';
@@ -314,6 +315,7 @@ async function processNextInQueue() {
     rawInput.value = '';
     parsedProblems.value = [];
     emit('nav', 'library');
+    triggerSilentCloudSync();
     return;
   }
 

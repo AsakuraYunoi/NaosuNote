@@ -210,4 +210,25 @@ function endDrag() {
   color: #0b57d0;
   font-weight: bold;
 }
+
+[data-theme="dark"] .drag-capsule-badge,
+.dark .drag-capsule-badge {
+  background: rgba(39, 42, 49, 0.95) !important;
+  border-color: #44474e !important;
+  color: #e2e2e6 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35) !important;
+}
+
+[data-theme="dark"] .m3-answer-space-handle-container:hover .drag-capsule-badge,
+.dark .m3-answer-space-handle-container:hover .drag-capsule-badge,
+[data-theme="dark"] .m3-answer-space-handle-container.is-dragging .drag-capsule-badge,
+.dark .m3-answer-space-handle-container.is-dragging .drag-capsule-badge {
+  border-color: var(--md-sys-color-primary, #a8c7fa) !important;
+  color: var(--md-sys-color-primary, #a8c7fa) !important;
+}
+
+[data-theme="dark"] .badge-label.highlight,
+.dark .badge-label.highlight {
+  color: #a8c7fa !important;
+}
 </style>

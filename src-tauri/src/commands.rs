@@ -108,13 +108,22 @@ pub fn get_device_info(window: tauri::Window) -> Result<crate::models::DeviceInf
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        let _ = window;
         let os_str = if cfg!(target_os = "ios") { "ios" } else { "android" };
+        let (width_dp, form_factor) = if let Ok(size) = window.inner_size() {
+            let scale = window.scale_factor().unwrap_or(1.0);
+            let w = size.width as f64 / scale;
+            let h = size.height as f64 / scale;
+            let min_dim = w.min(h);
+            let factor = if min_dim >= 600.0 { "pad" } else { "phone" };
+            (w, factor)
+        } else {
+            (390.0, "phone")
+        };
         Ok(crate::models::DeviceInfo {
             platform: "mobile".into(),
-            form_factor: "phone".into(),
+            form_factor: form_factor.into(),
             os: os_str.into(),
-            screen_width_dp: 390.0,
+            screen_width_dp: width_dp,
         })
     }
 
@@ -182,24 +191,24 @@ pub fn get_storage_options() -> Result<Vec<crate::models::StorageOption>, String
     #[cfg(target_os = "android")]
     {
         options.push(crate::models::StorageOption {
-            id: "android_docs".into(),
-            name: "系统公共文档目录 (Documents)".into(),
-            path: "/storage/emulated/0/Documents/NaosuNoteData".into(),
-            description: "推荐！可通过手机系统「文件」应用直接访问、管理与备份导出".into(),
+            id: "android_external_app".into(),
+            name: "外部应用私有目录 (Android/data)".into(),
+            path: "/storage/emulated/0/Android/data/com.naosunote.app/files/NaosuNoteData".into(),
+            description: "推荐！零权限要求，外部扩展存储空间，适合大容量配图与数据持久存储".into(),
             is_recommended: true,
         });
         options.push(crate::models::StorageOption {
             id: "android_internal".into(),
             name: "应用内部沙盒存储".into(),
-            path: "/data/user/0/online.yunoi.naosunote/files/NaosuNoteData".into(),
+            path: "/data/user/0/com.naosunote.app/files/NaosuNoteData".into(),
             description: "免外部存储权限，系统级安全隔离，卸载应用时自动清除".into(),
             is_recommended: false,
         });
         options.push(crate::models::StorageOption {
-            id: "android_external_app".into(),
-            name: "外部应用私有目录 (Android/data)".into(),
-            path: "/storage/emulated/0/Android/data/online.yunoi.naosunote/files/NaosuNoteData".into(),
-            description: "外部扩展存储空间，适合大容量配图与数据持久存储".into(),
+            id: "android_docs".into(),
+            name: "系统公共文档目录 (Documents)".into(),
+            path: "/storage/emulated/0/Documents/NaosuNoteData".into(),
+            description: "若手机系统已授予所有文件访问权限，可通过手机系统「文件」应用直接访问".into(),
             is_recommended: false,
         });
     }
@@ -662,7 +671,7 @@ pub fn save_problem(state: State<AppState>, mut input: ProblemInput) -> Result<P
             tags: input.tags.clone(),
             answer_markdown: input.answer_markdown.clone(),
             answer_images: input.answer_images.clone(),
-            created_at: None,
+            created_at: input.created_at.clone(),
             updated_at: input.updated_at.clone(),
             is_deleted: input.is_deleted.unwrap_or(0),
         };
@@ -707,20 +716,34 @@ pub fn increment_importance(state: State<AppState>, uuid: String) -> Result<i32,
 
 #[tauri::command]
 pub fn delete_problem(state: State<AppState>, uuid: String) -> Result<(), String> {
-    let (nb_opt, data_dir) = {
+    let (nb_opt, data_dir, answer_images) = {
         let db = state.db.lock().unwrap();
         let problem = db
             .get_problem_by_uuid(&uuid)
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "Problem not found".to_string())?;
+        let imgs = problem.answer_images.clone().unwrap_or_default();
         db.delete_problem(&uuid).map_err(|e| e.to_string())?;
         let nb = if let Some(ref nid) = problem.notebook_id {
             db.get_notebook_by_id(nid).ok().flatten()
         } else {
             None
         };
-        (nb, state.data_dir.lock().unwrap().clone())
+        (nb, state.data_dir.lock().unwrap().clone(), imgs)
     };
+
+    if !answer_images.is_empty() {
+        let db = state.db.lock().unwrap();
+        let img_dir = Path::new(&data_dir).join("ImgData");
+        for img in answer_images {
+            if let Ok(false) = db.is_image_referenced_by_active_problem(&img) {
+                let target = img_dir.join(&img);
+                if target.exists() {
+                    let _ = fs::remove_file(target);
+                }
+            }
+        }
+    }
 
     if let Some(nb) = nb_opt {
         let db = state.db.lock().unwrap();
@@ -798,11 +821,15 @@ pub fn batch_delete_problems(
     if uuids.is_empty() {
         return Ok(0);
     }
-    let (affected_notebook_ids, data_dir) = {
+    let (affected_notebook_ids, data_dir, all_deleted_images) = {
         let db = state.db.lock().unwrap();
         let mut affected: Vec<String> = Vec::new();
+        let mut images: Vec<String> = Vec::new();
         for u in &uuids {
             if let Ok(Some(p)) = db.get_problem_by_uuid(u) {
+                if let Some(ref imgs) = p.answer_images {
+                    images.extend(imgs.clone());
+                }
                 if let Some(nid) = p.notebook_id {
                     if !affected.contains(&nid) {
                         affected.push(nid);
@@ -810,13 +837,26 @@ pub fn batch_delete_problems(
                 }
             }
         }
-        (affected, state.data_dir.lock().unwrap().clone())
+        (affected, state.data_dir.lock().unwrap().clone(), images)
     };
 
     let count = {
         let db = state.db.lock().unwrap();
         db.batch_delete_problems(&uuids).map_err(|e| e.to_string())?
     };
+
+    if !all_deleted_images.is_empty() {
+        let db = state.db.lock().unwrap();
+        let img_dir = Path::new(&data_dir).join("ImgData");
+        for img in all_deleted_images {
+            if let Ok(false) = db.is_image_referenced_by_active_problem(&img) {
+                let target = img_dir.join(&img);
+                if target.exists() {
+                    let _ = fs::remove_file(target);
+                }
+            }
+        }
+    }
 
     let db = state.db.lock().unwrap();
     for nid in affected_notebook_ids {
@@ -946,6 +986,22 @@ pub fn save_answer_image(
         fs::create_dir_all(&img_dir).map_err(|e| format!("创建 ImgData 目录失败: {}", e))?;
     }
 
+    // 本地内容去重检查：若此题目下已有内容完全一致的图片，直接返回既有文件名，跳过冗余写入
+    let prefix = format!("{}_p", uuid);
+    if let Ok(entries) = fs::read_dir(&img_dir) {
+        for entry in entries.flatten() {
+            if let Some(name) = entry.file_name().to_str() {
+                if name.starts_with(&prefix) && name.ends_with(".webp") {
+                    if let Ok(existing_bytes) = fs::read(entry.path()) {
+                        if existing_bytes == image_bytes {
+                            return Ok(name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let filename = format!("{}_p{}.webp", uuid, page_index);
     let target_path = img_dir.join(&filename);
 
@@ -1003,6 +1059,42 @@ pub fn get_local_image_filenames(state: State<AppState>) -> Result<Vec<String>, 
     }
     Ok(files)
 }
+
+#[tauri::command]
+pub fn prune_local_unreferenced_images(state: State<AppState>) -> Result<Vec<String>, String> {
+    let (active_images, data_dir) = {
+        let db = state.db.lock().unwrap();
+        let images = db.get_all_active_problem_images().map_err(|e| e.to_string())?;
+        (
+            images.into_iter().collect::<std::collections::HashSet<String>>(),
+            state.data_dir.lock().unwrap().clone(),
+        )
+    };
+
+    let img_dir = Path::new(&data_dir).join("ImgData");
+    if !img_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut pruned = Vec::new();
+    if let Ok(entries) = fs::read_dir(&img_dir) {
+        for entry in entries.flatten() {
+            if let Ok(ft) = entry.file_type() {
+                if ft.is_file() {
+                    if let Some(name) = entry.file_name().to_str() {
+                        if !name.starts_with('.') && !active_images.contains(name) {
+                            if let Ok(()) = fs::remove_file(entry.path()) {
+                                pruned.push(name.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(pruned)
+}
+
 
 #[tauri::command]
 pub fn save_answer_image_by_filename(

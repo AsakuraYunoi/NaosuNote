@@ -94,7 +94,7 @@ import SettingsView from './views/SettingsView.vue';
 import ProfilePopoverCard from './components/ProfilePopoverCard.vue';
 import ProblemDetailView from './views/problem-detail/ProblemDetailView.vue';
 import Toast from './components/Toast.vue';
-import { apiSyncAllMirrors } from './utils/api';
+import { apiSyncAllMirrors, triggerSilentCloudSync } from './utils/api';
 
 const currentTab = ref('library');
 const transitionName = ref('m3-tab-fade');
@@ -123,6 +123,12 @@ onMounted(async () => {
   } catch (e) {
     console.error('Failed to sync mirrors on startup:', e);
   }
+  // 启动时静默检查并同步云端数据
+  triggerSilentCloudSync(1500);
+
+  window.addEventListener('online', () => {
+    triggerSilentCloudSync(500);
+  });
 });
 
 function openProblemDetail(prob: Problem, context?: { subject?: string; notebookId?: string }) {
@@ -233,6 +239,10 @@ function moveCartItemDown(index: number) {
   height: 100vh;
   overflow: hidden;
   background-color: var(--md-sys-color-background);
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
 .main-content {

@@ -1,0 +1,1 @@
+../../ios/scripts/package-ipa.sh
